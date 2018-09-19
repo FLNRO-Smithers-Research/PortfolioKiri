@@ -264,7 +264,18 @@ allSites <- foreach(SNum = unique(SSPredAll$SiteNo), .combine = combineList, .pa
 
 ###Violin plot
 portOut <- allSites$Weights[,-(nSpp+1)]
+
+portOut <- melt(portOut)
+portOut$variable <- as.factor(portOut$variable)
+
+
+ggplot(portOut)+
+  geom_violin(aes(x = variable, y = value), draw_quantiles = c(0.25,0.5,0.75), scale = "width")+
+  labs(x = "Spp", y = "Weight")
+
+###Old Version
 vioplot(portOut$Fd,portOut$Lw,portOut$Pl,portOut$Bl,portOut$Sx,portOut$Cw,portOut$Py, names = colnames(portOut), col = "purple") ##have to manually change if adding species
+
 
 ####Efficient Frontier
 EF.sum <- allSites$Frontier
