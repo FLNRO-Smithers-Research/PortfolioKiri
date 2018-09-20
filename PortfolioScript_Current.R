@@ -23,6 +23,7 @@ require(pcaPP)
 library(tseries)
 library(magrittr)
 library(foreach)
+library(reshape2)
 
 wd=tk_choose.dir()
 setwd(wd)
@@ -45,7 +46,7 @@ repeat.before = function(x) {   # repeats the last non NA value. Keeps leading N
 sigma <- read.csv("CovarianceMatrix_Full.csv")
 rownames(sigma) <- sigma[,1]
 sigma <- sigma[,-1]
-Trees <- c("Fd","Lw","Pl","Bl","Sx","Cw","Py") ##set species to use in portfolio
+Trees <- c("Fd","Hw","Pl","Bl","Sx","Cw","Py") ##set species to use in portfolio
 nSpp <- length(Trees)
 treeList <- Trees
 sigma <- sigma[Trees,Trees]
@@ -59,7 +60,7 @@ SuitTable <- unique(SuitTable)
 
 colnames(SuitTable)[2] <- "SS_NoSpace"
 
-SIBEC <- read.csv("PredSIforPort.csv", stringsAsFactors = FALSE)
+SIBEC <- read.csv("PredSIforPort_Sept18.csv", stringsAsFactors = FALSE)
 SIBEC <- SIBEC[,-5]
 colnames(SIBEC)[c(1,3,5)] <- c("SS_NoSpace", "MeanPlotSiteIndex","TreeSpp")
 
@@ -100,9 +101,10 @@ allSites <- foreach(SNum = unique(SSPredAll$SiteNo), .combine = combineList, .pa
         new
       }
     }
-    
-    add$MeanPlotSiteIndex <- 10 ##Set missing SI to 10
-    SSPred <- rbind(SSPred, add)
+    if(nrow(add) > 0){
+      add$MeanPlotSiteIndex <- 10 ##Set missing SI to 10
+      SSPred <- rbind(SSPred, add)
+    }
     SSPred <- SSPred[!is.na(SSPred$TreeSpp),]
     colnames(SSPred)[5] <- "Spp"
     
@@ -113,6 +115,13 @@ allSites <- foreach(SNum = unique(SSPredAll$SiteNo), .combine = combineList, .pa
     ###Create current data
     current <- SIBEC[SIBEC$SS_NoSpace == selectBGC,c(1,3,5)]
     current <- merge(current, SuitTable, by.x = c("TreeSpp","SS_NoSpace"), by.y = c("Spp","SS_NoSpace"), all.x = TRUE)
+    
+    ###check that there aren't errors in the table
+    temp <- aggregate(SS_NoSpace ~ TreeSpp, current, FUN = length)
+    if(any(temp$SS_NoSpace > 1)){
+      stop("There are partial duplicates in the suitablity table. Please fix them. :)")
+    }
+    
     current$Suitability[current$TreeSpp == "Fd"] <- 3
     current[is.na(current)] <- 5
     current[current == 0] <- 10
