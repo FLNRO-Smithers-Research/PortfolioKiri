@@ -2,31 +2,33 @@
 ##It then uses the Markowitz portfolio method to calculate the optimal mix of species.
 ##Kiri Daust, June 2018
 
-rm(list=ls())
 
-library(stats)
-library(rgl)
+.libPaths("E:/R packages351")
+
+require(stats)
+require(rgl)
 require(tcltk)
-library(bindr)
-library(lattice)
+require(bindr)
+require(lattice)
 require(dplyr)
-library(ggplot2)
-library(MonteCarlo)
+require(ggplot2)
+require(MonteCarlo)
 require(openxlsx)
 require(MASS)
 require(xts)
-library(PortfolioAnalytics)
-library(ROI.plugin.quadprog)
-library(ROI)
-library(MASS)
+require(PortfolioAnalytics)
+require(ROI.plugin.quadprog)
+require(ROI)
+require(MASS)
 require(pcaPP)
-library(tseries)
-library(magrittr)
-library(foreach)
-library(reshape2)
+require(tseries)
+require(magrittr)
+require(foreach)
+require(reshape2)
+require(doParallel)
 
-wd=tk_choose.dir()
-setwd(wd)
+rm(list=ls())
+wd=tk_choose.dir(); setwd(wd)
 
 ###OPTIONAL: Set up to run loops in parallel###
 require(doParallel)
@@ -34,6 +36,7 @@ set.seed(123321)
 coreNum <- as.numeric(detectCores()-2)
 coreNo <- makeCluster(coreNum)
 registerDoParallel(coreNo, cores = coreNum)
+clusterEvalQ(coreNo, .libPaths("E:/R packages351"))
 
 repeat.before = function(x) {   # repeats the last non NA value. Keeps leading NA
   ind = which(!is.na(x))      # get positions of nonmissing values
@@ -46,7 +49,7 @@ repeat.before = function(x) {   # repeats the last non NA value. Keeps leading N
 sigma <- read.csv("CovarianceMatrix_Full.csv")
 rownames(sigma) <- sigma[,1]
 sigma <- sigma[,-1]
-Trees <- c("Fd","Hw","Pl","Bl","Sx","Cw","Py") ##set species to use in portfolio
+Trees <- c("Bl","Cw","Fd","Hw","Lw","Pl","Py","Sx","Ss") ##set species to use in portfolio
 nSpp <- length(Trees)
 treeList <- Trees
 sigma <- sigma[Trees,Trees]
@@ -60,17 +63,17 @@ SuitTable <- unique(SuitTable)
 
 colnames(SuitTable)[2] <- "SS_NoSpace"
 
-SIBEC <- read.csv("PredSIforPort_Sept18.csv", stringsAsFactors = FALSE)
+SIBEC <- read.csv("PredSIforPort_Sept20.csv", stringsAsFactors = FALSE)
 SIBEC <- SIBEC[,-5]
 colnames(SIBEC)[c(1,3,5)] <- c("SS_NoSpace", "MeanPlotSiteIndex","TreeSpp")
 
-SSPredAll <- read.csv("WillBulkleyTSA.csv", stringsAsFactors = FALSE) ##Import SS predictions from CCISS tool: must have columns MergedBGC, Source, SS_NoSpace, SSprob, SSCurrent, FuturePeriod, SiteNo
+SSPredAll <- read.csv("SiteSeries_Predicted_Bulkley2.csv", stringsAsFactors = FALSE) ##Import SS predictions from CCISS tool: must have columns MergedBGC, Source, SS_NoSpace, SSprob, SSCurrent, FuturePeriod, SiteNo
 selectBGC <- select.list(choices = sort(unique(SSPredAll$SSCurrent)), graphics = TRUE) ###Select BGC to run for
 SSPredAll <- SSPredAll[SSPredAll$SSCurrent == selectBGC,]
 
 #####Randomly select 100 sites############
 sites <- as.numeric(as.character(unique(SSPredAll$SiteNo)))
-SSPredAll <- SSPredAll[SSPredAll$SiteNo %in% sample(sites, 100, replace = FALSE),]
+SSPredAll <- SSPredAll[SSPredAll$SiteNo %in% sample(sites, 10, replace = FALSE),]
 
 SSPredAll <- SSPredAll[!is.na(SSPredAll$SSprob),]
 ########################
@@ -358,7 +361,7 @@ for (j in 1:6){
 }
 randomCorr <- randomCorr[,-1]
 colnames(randomCorr) <- c("Pl", "Fd", "Cw", "Lw", "Bl", "Sx")
-library(pcaPP)
+require(pcaPP)
 corr <- cor.fk(randomCorr)
 
 x <- seq(0,10,0.1)
