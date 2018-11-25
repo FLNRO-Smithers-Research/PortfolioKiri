@@ -26,6 +26,7 @@ library(magrittr)
 library(foreach)
 library(reshape2)
 require(doParallel)
+require(corrplot)
 
 wd=tk_choose.dir(); setwd(wd)
 
@@ -37,25 +38,42 @@ coreNo <- makeCluster(coreNum)
 registerDoParallel(coreNo, cores = coreNum)
 clusterEvalQ(coreNo, .libPaths("E:/R packages351"))
 
-repeat.before = function(x) {   # repeats the last non NA value. Keeps leading NA
-  ind = which(!is.na(x))      # get positions of nonmissing values
-  if(is.na(x[1]))             # if it begins with a missing, add the 
-    ind = c(1,ind)        # first position to the indices
-  rep(x[ind], times = diff(   # repeat the values at these indices
-    c(ind, length(x) + 1) )) # diffing the indices + length yields how often 
-}
+
+
+nsuitF <- read.csv ("TreeSppSuit_v10.10BulkleyTest.csv")
+#nsuitF <- read.csv ("TreeSppSuit_v10.10.csv")
+
+SuitTable <- unique(nsuitF)
+
+colnames(SuitTable)[2] <- "SS_NoSpace"
+
+SIBEC <- read.csv("PredSIforPort_Sept20.csv", stringsAsFactors = FALSE)
+#SIBEC <- read.csv("PredSIforPort_Sept20_Testing.csv", stringsAsFactors = FALSE)
+
+SIBEC <- SIBEC[,-5]
+colnames(SIBEC)[c(1,3,5)] <- c("SS_NoSpace", "MeanPlotSiteIndex","TreeSpp")
+
+SSPredAll <- read.csv("BulkleyTSA_SSpredicted.csv", stringsAsFactors = FALSE) ##Import SS predictions from CCISS tool: must have columns MergedBGC, Source, SS_NoSpace, SSprob, SSCurrent, FuturePeriod, SiteNo
+#SSPredAll <- read.csv("BulkleyTSA_SSpredictedNOCHANGE.csv", stringsAsFactors = FALSE) ##Import SS predictions from CCISS tool: must have columns MergedBGC, Source, SS_NoSpace, SSprob, SSCurrent, FuturePeriod, SiteNo
+##############Select Site Series to Run
+selectBGC <- select.list(choices = sort(unique(SSPredAll$SSCurrent)), graphics = TRUE) ###Select BGC to run for
+SSPredAll <- SSPredAll[SSPredAll$SSCurrent == selectBGC,]
+sites <- as.numeric(as.character(unique(SSPredAll$SiteNo)))
+
 ##Build Correlation matrix for species of interest
-treeSuitraw <- read.csv ("TreeSppSuit_v10.10.csv")# reverse suitability in next run
-treeSuitraw$Suitability <- ifelse(treeSuitraw$Suitability %in% c('3'), 100, 
-                                  ifelse(treeSuitraw$Suitability %in% c('2'), 80, 
-                                         ifelse(treeSuitraw$Suitability %in% c('1'), 40,treeSuitraw$Suitability )))
+treeSuitraw <- read.csv ("TreeSppSuit_v10.10BulkleyTest.csv")# some suitability adjustments
+treeSuitraw <- treeSuitraw[treeSuitraw$Unit %in% SSPredAll$SS_NoSpace,]
+treeSuitraw$Suitability <- ifelse(treeSuitraw$Suitability %in% c('3'), 3, 
+                                  ifelse(treeSuitraw$Suitability %in% c('2'), 2, 
+                                         ifelse(treeSuitraw$Suitability %in% c('1'), 1,treeSuitraw$Suitability )))
 treeSuitraw$All <- paste(treeSuitraw$Unit, treeSuitraw$Spp)
 treeSuitremove <- treeSuitraw[duplicated(treeSuitraw$All),]# remove duplicate entries 
 treeSuitnew <-treeSuitraw[!duplicated(treeSuitraw$All),]
 treeSuit <- treeSuitraw[,-c(5)]
-# select tree species to run in correlation matrix build for portfolio
-#Trees <- c("Bl","Cw","Fd","Hw","Lw","Pl","Py","Sx","Ss")
-Trees <- c("Bl","Cw","Fd","Lw","Pl","Sx")
+#Trees <- c("Bl","Pl","Sx")#SBSmc2 and ESSFmc current
+#Trees <- c("Bl","Cw","Fd","Lw","Pl","Sx")#SBSmc2 futures "Hw",
+#Trees <- c("Ba", "Bl","Hw","Pl","Sx") #ICHmc1Current
+Trees <- c("Ba", "Bl","Cw","Fd","Hw","Lw", "Pl","Py","Sx","Ss") #
 treeSuit <- treeSuit[treeSuit$Spp %in% Trees,]
 treeSuitMatrix <- dcast(treeSuit, Unit ~ Spp, mean)
 treeSuitMatrix[is.na(treeSuitMatrix)] <- 0
@@ -64,42 +82,28 @@ rownames(treeSuitMatrix) <- treeSuitMatrix[,1]
 treeSuitMatrix <- treeSuitMatrix[,-1]
 ##create correlation matrix
 sigma <- cor(treeSuitMatrix, method=c("spearman"))
+write.csv(sigma, "CorrelationMatrix1.csv")
 ##Graphical output1
 corrplot(sigma,type = "lower", order = "hclust", tl.col = "black", tl.srt = 45, tl.cex = .5, is.corr = TRUE)
 ##Graphical output correlations limited species
 chart.Correlation(sigma, histogram = TRUE, pch = 19)
 
-#sigma <- read.csv("CovarianceMatrix_Full.csv")
+
+############USE THIS ONLY IF NOT GENERATING ON THE FLY
+#sigma <- read.csv("CorrelationMatrix1_modified.csv")
 #rownames(sigma) <- sigma[,1]
 #sigma <- sigma[,-1]
+###########
 nSpp <- length(Trees)
 treeList <- Trees
 sigma <- sigma[Trees,Trees]
 sigma <- as.matrix(sigma)
 momentargs <- list()
 momentargs$sigma <- sigma ##set up to use in PortfolioAnalystics 
-
-nsuitF <- read.csv ("TreeSppSuit_v10.10.csv")
-#nsuitF <- file.choose() ##Import suitability table
-#SuitTable <- read.csv(nsuitF, stringsAsFactors = FALSE)
-SuitTable <- unique(nsuitF)
-
-colnames(SuitTable)[2] <- "SS_NoSpace"
-
-SIBEC <- read.csv("PredSIforPort_Sept20.csv", stringsAsFactors = FALSE)
-SIBEC <- SIBEC[,-5]
-colnames(SIBEC)[c(1,3,5)] <- c("SS_NoSpace", "MeanPlotSiteIndex","TreeSpp")
-
-SSPredAll <- read.csv("SiteSeries_Predicted_Bulkley2.csv", stringsAsFactors = FALSE) ##Import SS predictions from CCISS tool: must have columns MergedBGC, Source, SS_NoSpace, SSprob, SSCurrent, FuturePeriod, SiteNo
-##############Select Site Series to Run
-selectBGC <- select.list(choices = sort(unique(SSPredAll$SSCurrent)), graphics = TRUE) ###Select BGC to run for
-SSPredAll <- SSPredAll[SSPredAll$SSCurrent == selectBGC,]
-
 #####Randomly select 100 sites############
-sites <- as.numeric(as.character(unique(SSPredAll$SiteNo)))
-SSPredAll <- SSPredAll[SSPredAll$SiteNo %in% sample(sites, 10, replace = FALSE),]
 
-SSPredAll <- SSPredAll[!is.na(SSPredAll$SSprob),]
+#SSPredAll <- SSPredAll[SSPredAll$SiteNo %in% sample(sites, 10, replace = FALSE),]
+#SSPredAll <- SSPredAll[!is.na(SSPredAll$SSprob),]
 ########################
 
 combineList <- function(...) {##Combine multiple dataframe in foreach loop
@@ -242,7 +246,7 @@ allSites <- foreach(SNum = unique(SSPredAll$SiteNo), .combine = combineList, .pa
       ##set portfolio constraints
       init.portfolio <- portfolio.spec(assets = colnames(returnsTS))
       init.portfolio <- add.constraint(portfolio = init.portfolio, type = "weight_sum", min_sum = 0.99, max_sum = 1.01) ###weights should add to about 1
-    #  init.portfolio <- add.constraint(portfolio = init.portfolio, type = "box", min = c(0,0,0,0,0,0,0,0), max = c(1,1,1,1,1,1,1,1)) ##set min and max weight for each species
+     # init.portfolio <- add.constraint(portfolio = init.portfolio, type = "box", min = c(0,0,0,0,0,0,0,0,0,0), max = c(1,1,1,1,0,1,1,1,1,1)) ##set min and max weight for each species
       init.portfolio <- add.constraint(portfolio = init.portfolio, type = "box", min = rep(0, nSpp),max = rep(1, nSpp))  ##set min and max weight for each species
       
       ###loop optimisation with increasing risk aversion to obtain efficient frontier
@@ -309,26 +313,26 @@ violin <-ggplot(portOut)+
   geom_violin(aes(x = variable, y = value), draw_quantiles = c(0.25,0.5,0.75), scale = "width")+
   labs(x = "Spp", y = "Weight")
 selectBGC <- gsub("/", "_", selectBGC)
-name1 = paste(selectBGC,"_Bulkley_TSAViolin",".pdf", sep = "")
+name1 = paste(selectBGC,"_Bulkley_TSA_CC_Violin",".pdf", sep = "")
 plot(violin)
-ggsave(name1, violin, device="pdf")
+   ggsave(name1, violin, device="pdf")
 dev.off ()
 ####Efficient Frontier
 EF.sum <- allSites$Frontier
 EF.sum <- aggregate(Weight ~ Spp + Risk, EF.sum, FUN = mean)
 EF.ret.all <- allSites$Return
 EF.ret.all <- aggregate(MeanRet ~ Risk, EF.ret.all, FUN = mean)
-
+write.csv (EF.sum, paste(selectBGC,"_CC_Portfolio_Weights",".csv", sep = ""))
 portfolio <- ggplot(EF.sum)+
   geom_bar(aes(x = Risk, y = Weight, fill = Spp), stat = "identity")+
   geom_line(data = EF.ret.all, aes(x = Risk, y = MeanRet), size = 2)+
   geom_vline(xintercept = 25)+
   labs(x = "Risk (0 = High Risk, 50 = Low Risk)", y= "% of species in portfolio")+
   scale_fill_brewer(palette = "Paired")+
-  ggtitle(selectBGC)
+  ggtitle(selectBGC, "CC_Portfolio_NoHw")
 plot(portfolio)
 selectBGC <- gsub("/", "_", selectBGC)
-name2 = paste(selectBGC,"Bulkley_TSAportfolio6",".pdf", sep = "")
+name2 = paste(selectBGC,"Bulkley_TSA_CC",".pdf", sep = "")
 ggsave(name2, portfolio, device="pdf")
 dev.off ()
  
