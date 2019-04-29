@@ -64,7 +64,7 @@ SIBEC <- read.csv("PredSIforPort_Sept18.csv", stringsAsFactors = FALSE)
 SIBEC <- SIBEC[,-5]
 colnames(SIBEC)[c(1,3,5)] <- c("SS_NoSpace", "MeanPlotSiteIndex","TreeSpp")
 
-SSPredAll <- read.csv("WillBulkleyTSA.csv", stringsAsFactors = FALSE) ##Import SS predictions from CCISS tool: must have columns MergedBGC, Source, SS_NoSpace, SSprob, SSCurrent, FuturePeriod, SiteNo
+SSPredAll <- read.csv(file.choose(), stringsAsFactors = FALSE) ##Import SS predictions from CCISS tool: must have columns MergedBGC, Source, SS_NoSpace, SSprob, SSCurrent, FuturePeriod, SiteNo
 selectBGC <- select.list(choices = sort(unique(SSPredAll$SSCurrent)), graphics = TRUE) ###Select BGC to run for
 SSPredAll <- SSPredAll[SSPredAll$SSCurrent == selectBGC,]
 
@@ -80,7 +80,7 @@ combineList <- function(...) {##Combine multiple dataframe in foreach loop
 }
 
 ###foreach site
-allSites <- foreach(SNum = unique(SSPredAll$SiteNo), .combine = combineList, .packages = c("foreach","reshape2","dplyr","magrittr","PortfolioAnalytics")) %dopar% {
+allSites <- foreach(SNum = unique(SSPredAll$SiteNo), .combine = combineList, .packages = c("foreach","reshape2","dplyr","magrittr","PortfolioAnalytics")) %do% {
     SSPred <- SSPredAll[SSPredAll$SiteNo == SNum,]
     EF.out.all <- rep(1:25, each = nSpp)
     EF.ret.all <- 1:25
@@ -115,6 +115,7 @@ allSites <- foreach(SNum = unique(SSPredAll$SiteNo), .combine = combineList, .pa
     ###Create current data
     current <- SIBEC[SIBEC$SS_NoSpace == selectBGC,c(1,3,5)]
     current <- merge(current, SuitTable, by.x = c("TreeSpp","SS_NoSpace"), by.y = c("Spp","SS_NoSpace"), all.x = TRUE)
+    current <- unique(current)
     
     ###check that there aren't errors in the table
     temp <- aggregate(SS_NoSpace ~ TreeSpp, current, FUN = length)
@@ -151,7 +152,7 @@ allSites <- foreach(SNum = unique(SSPredAll$SiteNo), .combine = combineList, .pa
     annualDat <- data.frame("Year" = seq(2000,2100,1))
 
     portOutput <- data.frame("Species" = treeList)###set up plot and output
-    plot(0,0, type = "n", xlim = c(1,100), ylim = c(0,3000), xlab = "Year", ylab = "Volume")
+    plot(0,0, type = "n", xlim = c(1,100), ylim = c(0,3000), xlab = "Year", ylab = "Volume")###plot
     
     for (w in 1:50){ ##number of iterations
       output <- data.frame("year" = annualDat$Year)
@@ -279,10 +280,12 @@ portOut$variable <- as.factor(portOut$variable)
 
 
 ggplot(portOut)+
-  geom_violin(aes(x = variable, y = value), draw_quantiles = c(0.25,0.5,0.75), scale = "width")+
-  labs(x = "Spp", y = "Weight")
+  geom_violin(aes(x = variable, y = value),colour = "purple", draw_quantiles = c(0.25,0.5,0.75), scale = "width")+
+  xlab("Species")+
+  ylab("Weight")
 
 ###Old Version
+library(vioplot)
 vioplot(portOut$Fd,portOut$Lw,portOut$Pl,portOut$Bl,portOut$Sx,portOut$Cw,portOut$Py, names = colnames(portOut), col = "purple") ##have to manually change if adding species
 
 
@@ -291,13 +294,17 @@ EF.sum <- allSites$Frontier
 EF.sum <- aggregate(Weight ~ Spp + Risk, EF.sum, FUN = mean)
 EF.ret.all <- allSites$Return
 EF.ret.all <- aggregate(MeanRet ~ Risk, EF.ret.all, FUN = mean)
+myColours <- c("red","pink", "orange","yellow","green","blue","magenta")
+names(myColours) <- levels(EF.sum$Spp)
+colScale <- scale_fill_manual(name = "Spp", values = myColours)
 
 ggplot(EF.sum)+
   geom_bar(aes(x = Risk, y = Weight, fill = Spp), stat = "identity")+
+  colScale+
   geom_line(data = EF.ret.all, aes(x = Risk, y = MeanRet), size = 2)+
   geom_vline(xintercept = 12)+
   labs(x = "Risk (0 = High Risk, 50 = Low Risk)")+
-  ggtitle((""))
+  ggtitle(("Efficient Frontier SBSdk/01 Shovel Lake"))
 
 ##===================================================================================
 ##                  OLD CODE
