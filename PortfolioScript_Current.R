@@ -3,7 +3,7 @@
 ##Kiri Daust, June 2018
 
 
-.libPaths("E:/R packages351")
+##.libPaths("E:/R packages351")
 
 require(stats)
 require(rgl)
@@ -49,7 +49,7 @@ repeat.before = function(x) {   # repeats the last non NA value. Keeps leading N
 sigma <- read.csv("CovarianceMatrix_Full.csv")
 rownames(sigma) <- sigma[,1]
 sigma <- sigma[,-1]
-Trees <- c("Bl","Cw","Fd","Hw","Lw","Pl","Py","Sx","Ss") ##set species to use in portfolio
+Trees <- c("Bl","Cw","Fd","Hw","Lw","Pl","Py","Sx") ##set species to use in portfolio
 nSpp <- length(Trees)
 treeList <- Trees
 sigma <- sigma[Trees,Trees]
