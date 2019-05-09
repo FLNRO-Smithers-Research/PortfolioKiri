@@ -29,6 +29,7 @@ require(doParallel)
 
 rm(list=ls())
 wd=tk_choose.dir(); setwd(wd)
+setwd("C:/Users/Kiri Daust/Desktop/PortfolioKiri")
 
 ###OPTIONAL: Set up to run loops in parallel###
 require(doParallel)
@@ -75,7 +76,8 @@ SSPredAll <- SSPredAll[SSPredAll$SSCurrent == selectBGC,]
 
 #####Randomly select 100 sites############
 sites <- as.numeric(as.character(unique(SSPredAll$SiteNo)))
-SSPredAll <- SSPredAll[SSPredAll$SiteNo %in% sample(sites, 10, replace = FALSE),]
+SiteList <- sample(sites, 100, replace = FALSE)
+SSPredAll <- SSPredAll[SSPredAll$SiteNo %in% SiteList,]
 
 SSPredAll <- SSPredAll[!is.na(SSPredAll$SSprob),]
 ########################
@@ -85,7 +87,7 @@ combineList <- function(...) {##Combine multiple dataframe in foreach loop
 }
 
 ###foreach site
-allSites <- foreach(SNum = unique(SSPredAll$SiteNo), .combine = combineList, .packages = c("foreach","reshape2","dplyr","magrittr","PortfolioAnalytics")) %do% {
+allSitesSpp <- foreach(SNum = unique(SSPredAll$SiteNo), .combine = combineList, .packages = c("foreach","reshape2","dplyr","magrittr","PortfolioAnalytics")) %dopar% {
     SSPred <- SSPredAll[SSPredAll$SiteNo == SNum,]
     EF.out.all <- rep(1:25, each = nSpp)
     EF.ret.all <- 1:25
@@ -277,6 +279,251 @@ allSites <- foreach(SNum = unique(SSPredAll$SiteNo), .combine = combineList, .pa
     outList
 }
 
+EF.sum <- allSitesSpp$Frontier
+EF.sum <- aggregate(Weight ~ Spp + Risk, EF.sum, FUN = mean)
+EF.ret.all <- allSitesSpp$Return
+EF.ret.all <- aggregate(MeanRet ~ Risk, EF.ret.all, FUN = mean)
+myColours <- c("red","pink", "orange","yellow","green","blue","magenta","darkgoldenrod")
+names(myColours) <- levels(EF.sum$Spp)
+colScale <- scale_fill_manual(name = "Spp", values = myColours)
+
+SpeciesPlot <- ggplot(EF.sum)+
+  geom_bar(aes(x = Risk, y = Weight, fill = Spp), stat = "identity")+
+  colScale+
+  geom_line(data = EF.ret.all, aes(x = Risk, y = MeanRet), size = 2)+
+  geom_vline(xintercept = 12)+
+  labs(x = "Risk (0 = High Risk, 50 = Low Risk)")+
+  ggtitle(("Species Portfolio"))
+
+
+####CBST Portfolio#############
+gs2gw <- function(x){###function to convert gs to gw
+  5e-25*exp(x*55.9)
+}
+gs2gwVec <- Vectorize(gs2gw)
+
+###import genetic matrix
+setwd("C:/Users/Kiri Daust/Desktop/PortfolioKiri/CBSTPortfolio")
+fullMat <- read.csv("Sx genetic suitability matrix - no assisted migration.csv")
+rownames(fullMat) <- fullMat$BECvar
+fullMat <- fullMat[,-1]
+fullMatSx <- fullMat
+fullMat <- read.csv("Pl genetic suitability matrix - no assisted migration.csv")
+rownames(fullMat) <- fullMat$BECvar
+fullMat <- fullMat[,-1]
+fullMatPl <- fullMat
+
+##import genetic list
+SuitTable <- read.csv("Sx genetic suitability list - no assisted migration.csv")
+colnames(SuitTable)[1:2] <- c("Site","Seed")
+SuitTableSx <- SuitTable
+SuitTable <- read.csv("Pl genetic suitability list - no assisted migration.csv")
+colnames(SuitTable)[1:2] <- c("Site","Seed")
+SuitTablePl <- SuitTable
+
+SuitTable <- merge(SuitTablePl, SuitTableSx, by = c("Site","Seed"), all = TRUE)
+colnames(SuitTable)[3:4] <- c("Spp1","Spp2")
+
+##import BGC prediction by model
+SSPredAll <- read.csv(file.choose())##import BGC predictions from CCISS script
+BGC <- gsub("/.*","",selectBGC)
+SSPredAll <- SSPredAll[SSPredAll$BGC == BGC,]
+SSPredAll <- SSPredAll[SSPredAll$FuturePeriod == 2025,]
+SSPredAll <- SSPredAll[SSPredAll$SiteNo %in% SiteList,]
+SeedList <- as.character(unique(SuitTable$Seed))
+outRaw <- data.frame(Seed = SeedList, Number = 0)
+
+
+simulateGrowth <- function(x){
+  if(any(x < 0) || max(x) < 0.4){return(NULL)}
+  
+  annualDat <- data.frame("Year" = seq(2000,2040,1))
+  
+  portOutput <- data.frame("Seed" = SeedList)###set up plot and output
+  s <- spline(c(2000,2025), x, n = 41)
+  growthRate <- s[["y"]]
+  pDead <- 1 - s[["y"]]
+  pDead <- rescale(pDead, to = c(0.01,0.1), from = c(0,1))
+  
+  nTrees <- 100 ##number of tree to start
+  Returns <- numeric(length = 41)
+  
+  ###Simulate Growth
+  for (i in 1:41){ ##for each year
+    height <- sum(growthRate[1:i]) ##total height
+    Returns[i] <- nTrees*height ##volume
+    prevTrees <- nTrees
+    percentDead <- rgamma(1, shape = 1, scale = pDead[i])###what percent of trees will die based on gamma distribution?
+    numDead <- (percentDead/100)*prevTrees###number of dead trees
+    nTrees <- prevTrees - numDead ##update number of trees
+  } ##for each year
+  ##returns <- cbind(returns, Returns)
+  ##colnames(returns)[length(returns)] <- seed
+  
+  assets <- vector("numeric", 41)
+  assets[1] <- Returns[1]
+  
+  for (z in 1:40){ ##convert from cumulative volume to change by year
+    assets[z+1] <- Returns[z+1] - Returns[z]
+  }
+  return(assets)
+}
+
+cleanFrontier <- function(EF.out.all, EF.ret.all){
+  EF.out.all$NumNA <- apply(is.na(EF.out.all), 1, FUN = sum)##number of models where it didn't show up
+  EF.out.all <- EF.out.all[EF.out.all$NumNA < 16,] ##remove seed stock showing up in < 50% of models
+  EF.out.all[is.na(EF.out.all)] <- 0
+  EF.out.all$Mean <- apply(EF.out.all[,-c(1,2,length(EF.out.all))],1,mean) ### mean of weights
+  for(R in EF.out.all$RA){###scale each out of 1
+    EF.out.all$Mean[EF.out.all$RA == R] <- EF.out.all$Mean[EF.out.all$RA == R]/sum(EF.out.all$Mean[EF.out.all$RA == R])
+  }
+  
+  
+  EF.ret.all$Mean <- apply(EF.ret.all[,-1],1,mean, na.rm = TRUE) ###mean of returns
+  EF.ret.all$Mean <- EF.ret.all$Mean/max(EF.ret.all$Mean) ##scale return out of 1
+  EF.ret.all <- EF.ret.all[,c(1,length(EF.ret.all))]
+  colnames(EF.ret.all) <- c("Risk","MeanRet")
+  EF.sum <- EF.out.all[,c("Seed","RA","Mean")]
+
+  if(nrow(EF.sum) > 0){
+    EF.sum$Site <- SNum
+  }
+  EF.ret.all$Site <- SNum
+  return(list(EF.sum, EF.ret.all))
+}
+
+###foreach site
+allSites <- foreach(SNum = SiteList, .combine = combineList,.packages = c("scales", "foreach","reshape2","dplyr","magrittr","PortfolioAnalytics")) %dopar% {
+  EF.out.all1 <- data.frame(Seed = "SBSmc2", RA = 2)
+  EF.out.all2 <- data.frame(Seed = "SBSmc2", RA = 2)
+  EF.ret.all1 <- data.frame(RA = 2)
+  EF.ret.all2 <- data.frame(RA = 2)
+  SSPred <- SSPredAll[SSPredAll$SiteNo == SNum,]
+  currBGC <- as.character(SSPred$BGC[1])
+  
+  SSPred <- merge(SSPred,SuitTable, by.x = "BGC.pred", by.y = "Site", all.x = TRUE)
+  modList <- as.character(unique(SSPred$GCM))
+  output <- data.frame(Seed = SeedList)
+  
+  for(mod in modList){
+    SSPredMod <- SSPred[SSPred$GCM == mod,]
+    returns <- data.frame(Year = seq(2000,2040,1))
+    modData1 <- data.frame(Year = seq(2000,2040,1))
+    modData2 <- data.frame(Year = seq(2000,2040,1))
+    
+    for(seed in SeedList){
+      SSPredSd <- SSPredMod[SSPredMod$Seed == seed,]
+      SSPredSd <- SSPredSd[order(SSPredSd$GCM,SSPredSd$FuturePeriod),]
+      SS.sum <- SSPredSd[,c("FuturePeriod","Spp1","Spp2")]
+      curr <- data.frame(FuturePeriod = 2000, 
+                         Spp1 = SuitTable$Spp1[SuitTable$Site == BGC & SuitTable$Seed == as.character(seed)],
+                         Spp2 = SuitTable$Spp2[SuitTable$Site == BGC & SuitTable$Seed == as.character(seed)])
+      SS.sum <- rbind(curr, SS.sum)
+      SS.sum$Spp1 <- gs2gwVec(SS.sum$Spp1)
+      SS.sum$Spp2 <- gs2gwVec(SS.sum$Spp2)
+      SS.sum[SS.sum < 0.00354] <- -1
+      SS.sum <- SS.sum[complete.cases(SS.sum),]
+      
+      Spp1 <- simulateGrowth(SS.sum$Spp1)
+      Spp2 <- simulateGrowth(SS.sum$Spp2)
+      if(is.null(Spp1) & is.null(Spp2)){next}
+      
+      if(!is.null(Spp1)){
+        modData1 <- cbind(modData1, Spp1)
+        colnames(modData1)[length(modData1)] <- seed
+      }
+      if(!is.null(Spp2)){
+        modData2 <- cbind(modData2, Spp2)
+        colnames(modData2)[length(modData2)] <- seed
+      }
+      
+    }
+    
+    datNames <- c("modData1","modData2")
+    for(i in 1:length(datNames)){
+      modData <- get(datNames[i])
+      if(ncol(modData) < 3){next}
+      returns <- modData
+      rownames(returns) <- paste(returns$Year,"-01-01", sep = "")
+      returns <- returns[,-1]
+      #returns <- returns[1:76,]
+      returnsTS <- as.xts(returns)
+      
+      init.portfolio <- portfolio.spec(assets = colnames(returnsTS))
+      nSpp <- length(colnames(returnsTS))
+      init.portfolio <- add.constraint(portfolio = init.portfolio, type = "weight_sum", min_sum = 0.9, max_sum = 1.1) ###weights should add to about 1
+      init.portfolio <- add.constraint(portfolio = init.portfolio, type = "box", min = rep(0, nSpp), max = rep(0.95, nSpp)) ##set min and max weight for each species
+      
+      for(q in seq(from = 2, to = 50, by = 2)){
+        qu <- add.objective(portfolio=init.portfolio, type="return", name="mean")
+        qu <- add.objective(portfolio=qu, type="risk", name="var", risk_aversion = q)
+        
+        minSD.opt <- optimize.portfolio(R = returnsTS, portfolio = qu, optimize_method = "ROI", trace = TRUE)
+        if(q == 2){
+          EF.out <-  as.data.frame(minSD.opt[["weights"]])
+          EF.out$Seed <- rownames(EF.out)
+          EF.out$RA <- q
+          EF.ret <- as.data.frame(minSD.opt[["objective_measures"]][["mean"]])
+          EF.ret$RA <- q
+        }else{
+          temp <- as.data.frame(minSD.opt[["weights"]])
+          temp$Seed <- rownames(temp)
+          temp$RA <- q
+          EF.out <- rbind(EF.out, temp)
+          temp <- as.data.frame(minSD.opt[["objective_measures"]][["mean"]])
+          temp$RA <- q
+          EF.ret <- rbind(EF.ret, temp)
+        }
+        
+      }
+      if(i == 1){
+        EF.out.all1 <- merge(EF.out.all1, EF.out, by = c("Seed","RA"), all = TRUE)
+        EF.ret.all1 <- merge(EF.ret.all1, EF.ret, by = "RA", all = TRUE)
+      }else{
+        EF.out.all2 <- merge(EF.out.all2, EF.out, by = c("Seed","RA"), all = TRUE)
+        EF.ret.all2 <- merge(EF.ret.all2, EF.ret, by = "RA", all = TRUE)
+      }
+      
+    }
+    
+  }
+  Spp1Out <- cleanFrontier(EF.out.all1, EF.ret.all1)
+  Spp2Out <- cleanFrontier(EF.out.all2, EF.ret.all2)
+  outList <- list(Spp1Out[[1]],Spp1Out[[2]], Spp2Out[[1]],Spp2Out[[2]])
+  outList
+} 
+
+for(i in c(1,3)){
+  EFall <- allSites[[i]]   
+  EFall <- aggregate(Mean ~ Seed + RA, data = EFall, FUN = mean)
+  maxW <- aggregate(Mean ~ Seed, data = EFall, FUN = max)
+  EFall <- EFall[EFall$Seed %in% maxW$Seed[maxW$Mean > 0.05],]
+  for(R in unique(EFall$RA)){###scale each out of 1
+    EFall$Mean[EFall$RA == R] <- EFall$Mean[EFall$RA == R]/sum(EFall$Mean[EFall$RA == R])
+  }
+  EFret <- aggregate(MeanRet ~ Risk, data = allSites[[i+1]], FUN = mean)
+  
+  assign(paste("CBSTp",i, sep = ""),
+    ggplot(EFall)+
+    geom_bar(aes(x = RA, y = Mean, fill = Seed), stat = "identity")+
+    geom_line(data = EFret, aes(x = Risk, y = MeanRet), size = 2)+
+    scale_fill_discrete()+
+    labs(x = "Risk (0 = High Risk, 50 = Low Risk)"))
+}
+
+layoutMat <- rbind(c(1,1,1,1,2,2),
+                   c(1,1,1,1,NA,NA),
+                   c(1,1,1,1,3,3))
+library(gridExtra)
+
+grid.arrange(grobs = list(SpeciesPlot,CBSTp3,CBSTp1), layout_matrix = layoutMat)
+
+
+###maybe for later: https://stackoverflow.com/questions/35631889/align-multiple-plots-with-varying-spacings-and-add-arrows-between-them/35634129#35634129
+####Efficient Frontier
+
+
+
 ###Violin plot
 portOut <- allSites$Weights[,-(nSpp+1)]
 
@@ -293,23 +540,6 @@ ggplot(portOut)+
 library(vioplot)
 vioplot(portOut$Fd,portOut$Lw,portOut$Pl,portOut$Bl,portOut$Sx,portOut$Cw,portOut$Py, names = colnames(portOut), col = "purple") ##have to manually change if adding species
 
-
-####Efficient Frontier
-EF.sum <- allSites$Frontier
-EF.sum <- aggregate(Weight ~ Spp + Risk, EF.sum, FUN = mean)
-EF.ret.all <- allSites$Return
-EF.ret.all <- aggregate(MeanRet ~ Risk, EF.ret.all, FUN = mean)
-myColours <- c("red","pink", "orange","yellow","green","blue","magenta")
-names(myColours) <- levels(EF.sum$Spp)
-colScale <- scale_fill_manual(name = "Spp", values = myColours)
-
-ggplot(EF.sum)+
-  geom_bar(aes(x = Risk, y = Weight, fill = Spp), stat = "identity")+
-  colScale+
-  geom_line(data = EF.ret.all, aes(x = Risk, y = MeanRet), size = 2)+
-  geom_vline(xintercept = 12)+
-  labs(x = "Risk (0 = High Risk, 50 = Low Risk)")+
-  ggtitle(("Efficient Frontier SBSdk/01 Shovel Lake"))
 
 ##===================================================================================
 ##                  OLD CODE

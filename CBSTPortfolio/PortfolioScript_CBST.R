@@ -33,7 +33,7 @@ setwd("C:/Users/Kiri Daust/Desktop/PortfolioKiri/CBSTPortfolio")
 ###OPTIONAL: Set up to run loops in parallel###
 require(doParallel)
 set.seed(123321)
-coreNum <- as.numeric(detectCores()-2)
+coreNum <- as.numeric(detectCores()-1)
 coreNo <- makeCluster(coreNum)
 registerDoParallel(coreNo, cores = coreNum)
 
@@ -74,13 +74,13 @@ combineList <- function(...) {##Combine multiple dataframe in foreach loop
     mapply(FUN = rbind, ..., SIMPLIFY=FALSE)
 }
 
-
-SiteList <- as.character(SSPredAll$SiteNo[SSPredAll$BGC == "SBSmc2"])
+SeedList <- as.character(unique(SuitTable$Seed))
+SiteList <- as.character(SSPredAll$SiteNo[SSPredAll$BGC == "SBSdk"])
 outRaw <- data.frame(Seed = SeedList, Number = 0)
 
 SSPredAll <- SSPredAll[SSPredAll$SiteNo %in% sample(SiteList, 200, replace = FALSE),]
 SiteList <- as.character(unique(SSPredAll$SiteNo))
-SeedList <- as.character(unique(SuitTable$Seed))
+
 ###foreach site
 allSites <- foreach(SNum = SiteList, .combine = combineList,.packages = c("scales", "foreach","reshape2","dplyr","magrittr","PortfolioAnalytics")) %dopar% {
   EF.out.all <- data.frame(Seed = "SBSmc2", RA = 2)
@@ -221,7 +221,7 @@ allSites <- foreach(SNum = SiteList, .combine = combineList,.packages = c("scale
 EFall <- allSites$Frontier   
 EFall <- aggregate(Mean ~ Seed + RA, data = EFall, FUN = mean)
 maxW <- aggregate(Mean ~ Seed, data = EFall, FUN = max)
-EFall <- EFall[EFall$Seed %in% maxW$Seed[maxW$Mean > 0.1],]
+EFall <- EFall[EFall$Seed %in% maxW$Seed[maxW$Mean > 0.05],]
 for(R in unique(EFall$RA)){###scale each out of 1
   EFall$Mean[EFall$RA == R] <- EFall$Mean[EFall$RA == R]/sum(EFall$Mean[EFall$RA == R])
 }
