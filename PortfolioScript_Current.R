@@ -493,6 +493,7 @@ allSites <- foreach(SNum = SiteList, .combine = combineList,.packages = c("scale
   outList
 } 
 
+titles <- c("CBST Pl","", "CBST Sx")
 for(i in c(1,3)){
   EFall <- allSites[[i]]   
   EFall <- aggregate(Mean ~ Seed + RA, data = EFall, FUN = mean)
@@ -508,7 +509,7 @@ for(i in c(1,3)){
     geom_bar(aes(x = RA, y = Mean, fill = Seed), stat = "identity")+
     geom_line(data = EFret, aes(x = Risk, y = MeanRet), size = 2)+
     scale_fill_discrete()+
-    labs(x = "Risk (0 = High Risk, 50 = Low Risk)"))
+    labs(x = "Risk (0 = High Risk, 50 = Low Risk)", title = titles[i]))
 }
 
 layoutMat <- rbind(c(1,1,1,1,2,2),
