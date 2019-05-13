@@ -60,9 +60,6 @@ plot(function(x) 5e-25*exp(x*55.9), xlim = c(0.9,1))
 
 ######################## 
 
-modPeriod <- c(2025)
-modelYears <- 40
-
 combineList <- function(...) {##Combine multiple dataframe in foreach loop
     mapply(FUN = rbind, ..., SIMPLIFY=FALSE)
 }
@@ -96,15 +93,14 @@ SuitTable <- merge(SuitTablePl, SuitTableSx, by = c("Site","Seed"), all = TRUE)
 colnames(SuitTable)[3:4] <- c("Spp1","Spp2")
 
 ##import BGC prediction by model
-BGC <- "IDFdk3"
+BGC <- "SBSmc2"
 SSPredAll <- read.csv(file.choose())##import BGC predictions from CCISS script
 SSPredAll <- Y2.sub
 SSPredAll$GCM <- paste(SSPredAll$GCM, SSPredAll$Scenario, sep = "-")
 
 SiteList <- unique(as.character(SSPredAll$SiteNo[SSPredAll$BGC == BGC]))
-SiteList <- sample(SiteList, 10, replace = FALSE)
+SiteList <- sample(SiteList, 50, replace = FALSE)
 SSPredAll <- SSPredAll[SSPredAll$SiteNo %in% SiteList,]
-SSPredAll <- SSPredAll[SSPredAll$FuturePeriod %in% modPeriod,]
 SeedList <- as.character(unique(SuitTable$Seed))
 
 simulateGrowth <- function(x){
@@ -163,113 +159,126 @@ cleanFrontier <- function(EF.out.all, EF.ret.all){
   return(list(EF.sum, EF.ret.all))
 }
 
+SSPredAllOrig <- SSPredAll
+periods <- list(2025, c(2025,2055),c(2025,2055,2085))
+time <- c(40, 70, 100)
+for(x in 2:3){
+  modPeriod <- periods[[x]]
+  modelYears <- time[x]
+  name <- paste("allSites",x,sep = "")
+  SSPredAll <- SSPredAllOrig[SSPredAllOrig$FuturePeriod %in% modPeriod,]
+  assign(name,
+         foreach(SNum = SiteList, .combine = combineList,.packages = c("scales", "foreach","reshape2","dplyr","magrittr","PortfolioAnalytics")) %dopar% {
+           EF.out.all1 <- data.frame(Seed = "SBSmc2", RA = 2)
+           EF.out.all2 <- data.frame(Seed = "SBSmc2", RA = 2)
+           EF.ret.all1 <- data.frame(RA = 2)
+           EF.ret.all2 <- data.frame(RA = 2)
+           SSPred <- SSPredAll[SSPredAll$SiteNo == SNum,]
+           currBGC <- as.character(SSPred$BGC[1])
+           
+           SSPred <- merge(SSPred,SuitTable, by.x = "BGC.pred", by.y = "Site", all.x = TRUE)
+           
+           ##SSPred <- SSPred[complete.cases(SSPred),]
+           modList <- as.character(unique(SSPred$GCM))
+           output <- data.frame(Seed = SeedList)
+           
+           for(mod in modList){
+             SSPredMod <- SSPred[SSPred$GCM == mod,]
+             if(any(is.na(SSPredMod$Seed))){next}
+             returns <- data.frame(Year = seq(2000,2000+modelYears,1))
+             modData1 <- data.frame(Year = seq(2000,2000+modelYears,1))
+             modData2 <- data.frame(Year = seq(2000,2000+modelYears,1))
+             
+             for(seed in SeedList){
+               SSPredSd <- SSPredMod[SSPredMod$Seed == seed,]
+               SSPredSd <- SSPredSd[order(SSPredSd$GCM,SSPredSd$FuturePeriod),]
+               SS.sum <- SSPredSd[,c("FuturePeriod","Spp1","Spp2")]
+               curr <- data.frame(FuturePeriod = 2000, 
+                                  Spp1 = SuitTable$Spp1[SuitTable$Site == BGC & SuitTable$Seed == as.character(seed)],
+                                  Spp2 = SuitTable$Spp2[SuitTable$Site == BGC & SuitTable$Seed == as.character(seed)])
+               SS.sum <- rbind(curr, SS.sum)
+               SS.sum$Spp1 <- gs2gwVec(SS.sum$Spp1)
+               SS.sum$Spp2 <- gs2gwVec(SS.sum$Spp2)
+               SS.sum[SS.sum < 0.00354] <- -1
+               SS.sum <- SS.sum[complete.cases(SS.sum),]
+               
+               Spp1 <- simulateGrowth(SS.sum$Spp1)
+               Spp2 <- simulateGrowth(SS.sum$Spp2)
+               if(is.null(Spp1) & is.null(Spp2)){next}
+               
+               if(!is.null(Spp1)){
+                 modData1 <- cbind(modData1, Spp1)
+                 colnames(modData1)[length(modData1)] <- seed
+               }
+               if(!is.null(Spp2)){
+                 modData2 <- cbind(modData2, Spp2)
+                 colnames(modData2)[length(modData2)] <- seed
+               }
+               
+             }
+             
+             datNames <- c("modData1","modData2")
+             for(i in 1:length(datNames)){
+               modData <- get(datNames[i])
+               if(ncol(modData) < 3){next}
+               returns <- modData
+               rownames(returns) <- paste(returns$Year,"-01-01", sep = "")
+               returns <- returns[,-1]
+               returnsTS <- as.xts(returns)
+               
+               init.portfolio <- portfolio.spec(assets = colnames(returnsTS))
+               nSpp <- length(colnames(returnsTS))
+               init.portfolio <- add.constraint(portfolio = init.portfolio, type = "weight_sum", min_sum = 0.9, max_sum = 1.1) ###weights should add to about 1
+               init.portfolio <- add.constraint(portfolio = init.portfolio, type = "box", min = rep(0, nSpp), max = rep(0.95, nSpp)) ##set min and max weight for each species
+               
+               for(q in seq(from = 2, to = 50, by = 2)){
+                 qu <- add.objective(portfolio=init.portfolio, type="return", name="mean")
+                 qu <- add.objective(portfolio=qu, type="risk", name="var", risk_aversion = q)
+                 
+                 minSD.opt <- optimize.portfolio(R = returnsTS, portfolio = qu, optimize_method = "ROI", trace = TRUE)
+                 if(q == 2){
+                   EF.out <-  as.data.frame(minSD.opt[["weights"]])
+                   EF.out$Seed <- rownames(EF.out)
+                   EF.out$RA <- q
+                   EF.ret <- as.data.frame(minSD.opt[["objective_measures"]][["mean"]])
+                   EF.ret$RA <- q
+                 }else{
+                   temp <- as.data.frame(minSD.opt[["weights"]])
+                   temp$Seed <- rownames(temp)
+                   temp$RA <- q
+                   EF.out <- rbind(EF.out, temp)
+                   temp <- as.data.frame(minSD.opt[["objective_measures"]][["mean"]])
+                   temp$RA <- q
+                   EF.ret <- rbind(EF.ret, temp)
+                 }
+                 
+               }
+               if(i == 1){
+                 EF.out.all1 <- merge(EF.out.all1, EF.out, by = c("Seed","RA"), all = TRUE)
+                 EF.ret.all1 <- merge(EF.ret.all1, EF.ret, by = "RA", all = TRUE)
+               }else{
+                 EF.out.all2 <- merge(EF.out.all2, EF.out, by = c("Seed","RA"), all = TRUE)
+                 EF.ret.all2 <- merge(EF.ret.all2, EF.ret, by = "RA", all = TRUE)
+               }
+               
+             }
+             
+           }
+           Spp1Out <- cleanFrontier(EF.out.all1, EF.ret.all1)
+           Spp2Out <- cleanFrontier(EF.out.all2, EF.ret.all2)
+           outList <- list(Spp1Out[[1]],Spp1Out[[2]], Spp2Out[[1]],Spp2Out[[2]])
+           outList
+         } 
+  )
+}
 ###foreach site
-allSites <- foreach(SNum = SiteList, .combine = combineList,.packages = c("scales", "foreach","reshape2","dplyr","magrittr","PortfolioAnalytics")) %dopar% {
-  EF.out.all1 <- data.frame(Seed = "SBSmc2", RA = 2)
-  EF.out.all2 <- data.frame(Seed = "SBSmc2", RA = 2)
-  EF.ret.all1 <- data.frame(RA = 2)
-  EF.ret.all2 <- data.frame(RA = 2)
-  SSPred <- SSPredAll[SSPredAll$SiteNo == SNum,]
-  currBGC <- as.character(SSPred$BGC[1])
-  
-  SSPred <- merge(SSPred,SuitTable, by.x = "BGC.pred", by.y = "Site", all.x = TRUE)
-  SSPred <- SSPred[complete.cases(SSPred),]
-  modList <- as.character(unique(SSPred$GCM))
-  output <- data.frame(Seed = SeedList)
-  
-  for(mod in modList){
-    SSPredMod <- SSPred[SSPred$GCM == mod,]
-    returns <- data.frame(Year = seq(2000,2000+modelYears,1))
-    modData1 <- data.frame(Year = seq(2000,2000+modelYears,1))
-    modData2 <- data.frame(Year = seq(2000,2000+modelYears,1))
-    
-    for(seed in SeedList){
-      SSPredSd <- SSPredMod[SSPredMod$Seed == seed,]
-      SSPredSd <- SSPredSd[order(SSPredSd$GCM,SSPredSd$FuturePeriod),]
-      SS.sum <- SSPredSd[,c("FuturePeriod","Spp1","Spp2")]
-      curr <- data.frame(FuturePeriod = 2000, 
-                         Spp1 = SuitTable$Spp1[SuitTable$Site == BGC & SuitTable$Seed == as.character(seed)],
-                         Spp2 = SuitTable$Spp2[SuitTable$Site == BGC & SuitTable$Seed == as.character(seed)])
-      SS.sum <- rbind(curr, SS.sum)
-      SS.sum$Spp1 <- gs2gwVec(SS.sum$Spp1)
-      SS.sum$Spp2 <- gs2gwVec(SS.sum$Spp2)
-      SS.sum[SS.sum < 0.00354] <- -1
-      SS.sum <- SS.sum[complete.cases(SS.sum),]
-      
-      Spp1 <- simulateGrowth(SS.sum$Spp1)
-      Spp2 <- simulateGrowth(SS.sum$Spp2)
-      if(is.null(Spp1) & is.null(Spp2)){next}
-      
-      if(!is.null(Spp1)){
-        modData1 <- cbind(modData1, Spp1)
-        colnames(modData1)[length(modData1)] <- seed
-      }
-      if(!is.null(Spp2)){
-        modData2 <- cbind(modData2, Spp2)
-        colnames(modData2)[length(modData2)] <- seed
-      }
-      
-    }
-    
-    datNames <- c("modData1","modData2")
-    for(i in 1:length(datNames)){
-      modData <- get(datNames[i])
-      if(ncol(modData) < 3){next}
-      returns <- modData
-      rownames(returns) <- paste(returns$Year,"-01-01", sep = "")
-      returns <- returns[,-1]
-      returnsTS <- as.xts(returns)
-      
-      init.portfolio <- portfolio.spec(assets = colnames(returnsTS))
-      nSpp <- length(colnames(returnsTS))
-      init.portfolio <- add.constraint(portfolio = init.portfolio, type = "weight_sum", min_sum = 0.9, max_sum = 1.1) ###weights should add to about 1
-      init.portfolio <- add.constraint(portfolio = init.portfolio, type = "box", min = rep(0, nSpp), max = rep(0.95, nSpp)) ##set min and max weight for each species
-      
-      for(q in seq(from = 2, to = 50, by = 2)){
-        qu <- add.objective(portfolio=init.portfolio, type="return", name="mean")
-        qu <- add.objective(portfolio=qu, type="risk", name="var", risk_aversion = q)
-        
-        minSD.opt <- optimize.portfolio(R = returnsTS, portfolio = qu, optimize_method = "ROI", trace = TRUE)
-        if(q == 2){
-          EF.out <-  as.data.frame(minSD.opt[["weights"]])
-          EF.out$Seed <- rownames(EF.out)
-          EF.out$RA <- q
-          EF.ret <- as.data.frame(minSD.opt[["objective_measures"]][["mean"]])
-          EF.ret$RA <- q
-        }else{
-          temp <- as.data.frame(minSD.opt[["weights"]])
-          temp$Seed <- rownames(temp)
-          temp$RA <- q
-          EF.out <- rbind(EF.out, temp)
-          temp <- as.data.frame(minSD.opt[["objective_measures"]][["mean"]])
-          temp$RA <- q
-          EF.ret <- rbind(EF.ret, temp)
-        }
-        
-      }
-      if(i == 1){
-        EF.out.all1 <- merge(EF.out.all1, EF.out, by = c("Seed","RA"), all = TRUE)
-        EF.ret.all1 <- merge(EF.ret.all1, EF.ret, by = "RA", all = TRUE)
-      }else{
-        EF.out.all2 <- merge(EF.out.all2, EF.out, by = c("Seed","RA"), all = TRUE)
-        EF.ret.all2 <- merge(EF.ret.all2, EF.ret, by = "RA", all = TRUE)
-      }
-      
-    }
-    
-  }
-  Spp1Out <- cleanFrontier(EF.out.all1, EF.ret.all1)
-  Spp2Out <- cleanFrontier(EF.out.all2, EF.ret.all2)
-  outList <- list(Spp1Out[[1]],Spp1Out[[2]], Spp2Out[[1]],Spp2Out[[2]])
-  outList
-} 
-
+allSites <- allSites2
 titles <- c("CBST Pl","", "CBST Sx")
 for(i in c(1,3)){
   EFall <- allSites[[i]]   
   EFall <- aggregate(Mean ~ Seed + RA, data = EFall, FUN = mean)
   maxW <- aggregate(Mean ~ Seed, data = EFall, FUN = max)
-  EFall <- EFall[EFall$Seed %in% maxW$Seed[maxW$Mean > 0.05],]
+  EFall <- EFall[EFall$Seed %in% maxW$Seed[maxW$Mean > 0.08],]
   for(R in unique(EFall$RA)){###scale each out of 1
     EFall$Mean[EFall$RA == R] <- EFall$Mean[EFall$RA == R]/sum(EFall$Mean[EFall$RA == R])
   }
