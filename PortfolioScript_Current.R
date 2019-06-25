@@ -1,6 +1,6 @@
 ##This script uses a Monte Carlo approach to model tree growth wiht SI numbers and predicted suitability 
 ##It then uses the Markowitz portfolio method to calculate the optimal mix of species.
-##Kiri Daust, June 2018
+##Kiri Daust, June 2019
 
 
 ##.libPaths("E:/R packages351")
@@ -37,7 +37,7 @@ set.seed(123321)
 coreNum <- as.numeric(detectCores()-2)
 coreNo <- makeCluster(coreNum)
 registerDoParallel(coreNo, cores = coreNum)
-clusterEvalQ(coreNo, .libPaths("E:/R packages351"))
+##clusterEvalQ(coreNo, .libPaths("E:/R packages351"))
 
 repeat.before = function(x) {   # repeats the last non NA value. Keeps leading NA
   ind = which(!is.na(x))      # get positions of nonmissing values
@@ -64,10 +64,10 @@ SuitTable <- unique(SuitTable)
 
 colnames(SuitTable)[2] <- "SS_NoSpace"
 
-SIBEC <- read.csv("PredSIforPort_Sept20.csv", stringsAsFactors = FALSE)
-SIBEC <- SIBEC[,-5]
-colnames(SIBEC)[c(1,3,5)] <- c("SS_NoSpace", "MeanPlotSiteIndex","TreeSpp")
-
+SIBEC <- read.csv("BartPredSI.csv", stringsAsFactors = FALSE)
+SIBEC <- SIBEC[,-4]
+colnames(SIBEC) <- c("SS_NoSpace", "TreeSpp","MeanPlotSiteIndex")
+##SIBEC <- SIBEC[,c("SS_NoSpace", "TreeSpp","MeanPlotSiteIndex")]
 
 SSPredAll <- read.csv(file.choose(), stringsAsFactors = FALSE) ##Import SS predictions from CCISS tool: must have columns MergedBGC, Source, SS_NoSpace, SSprob, SSCurrent, FuturePeriod, SiteNo
 
@@ -95,7 +95,7 @@ allSitesSpp <- foreach(SNum = unique(SSPredAll$SiteNo), .combine = combineList, 
     ##Merge SIBEC data
     SIBEC <- SIBEC[SIBEC$TreeSpp %in% Trees,]
     SSPred <- SSPred[,c(6,3,4)]
-    SSPred <- merge(SSPred, SIBEC[,c(1,3,5)], by = "SS_NoSpace", all.x = TRUE)
+    SSPred <- merge(SSPred, SIBEC, by = "SS_NoSpace", all.x = TRUE)
     
     ###Add rows for species with missing SI
     add <- foreach(Year = unique(SSPred$FuturePeriod), .combine = rbind) %do%{
@@ -109,18 +109,18 @@ allSitesSpp <- foreach(SNum = unique(SSPredAll$SiteNo), .combine = combineList, 
       }
     }
     if(nrow(add) > 0){
-      add$MeanPlotSiteIndex <- 10 ##Set missing SI to 10
+      add$MeanPlotSiteIndex <- 8 ##Set missing SI to 10
       SSPred <- rbind(SSPred, add)
     }
     SSPred <- SSPred[!is.na(SSPred$TreeSpp),]
-    colnames(SSPred)[5] <- "Spp"
+    colnames(SSPred)[4] <- "Spp"
     
     ##Add suitability
     SSPred <- merge(SSPred, SuitTable, by = c("SS_NoSpace","Spp"), all.x = TRUE)
     SSPred$Suitability[is.na(SSPred$Suitability)] <- 5
     
     ###Create current data
-    current <- SIBEC[SIBEC$SS_NoSpace == selectBGC,c(1,3,5)]
+    current <- SIBEC[SIBEC$SS_NoSpace == selectBGC,]
     current <- merge(current, SuitTable, by.x = c("TreeSpp","SS_NoSpace"), by.y = c("Spp","SS_NoSpace"), all.x = TRUE)
     current <- unique(current)
     
@@ -130,7 +130,7 @@ allSitesSpp <- foreach(SNum = unique(SSPredAll$SiteNo), .combine = combineList, 
       stop("There are partial duplicates in the suitablity table. Please fix them. :)")
     }
     
-    current$Suitability[current$TreeSpp == "Fd"] <- 3
+    ##current$Suitability[current$TreeSpp == "Fd"] <- 3
     current[is.na(current)] <- 5
     current[current == 0] <- 10
     current <- data.frame(Spp = current$TreeSpp, FuturePeriod = 2000, MeanSI = current$MeanPlotSiteIndex, MeanSuit = current$Suitability)
@@ -287,13 +287,13 @@ myColours <- c("red","pink", "orange","yellow","green","blue","magenta","darkgol
 names(myColours) <- levels(EF.sum$Spp)
 colScale <- scale_fill_manual(name = "Spp", values = myColours)
 
-SpeciesPlot <- ggplot(EF.sum)+
-  geom_bar(aes(x = Risk, y = Weight, fill = Spp), stat = "identity")+
+ggplot(EF.sum)+
+  geom_bar(aes(x = Risk, y = Weight, fill = Spp),size = 0.00001, col = "black", stat = "identity")+
   colScale+
   geom_line(data = EF.ret.all, aes(x = Risk, y = MeanRet), size = 2)+
   geom_vline(xintercept = 12)+
   labs(x = "Risk (0 = High Risk, 50 = Low Risk)")+
-  ggtitle(("Species Portfolio"))
+  ggtitle(("Species Portfolio SBSmc2/01"))
 
 
 ####CBST Portfolio#############
@@ -327,6 +327,9 @@ colnames(SuitTable)[3:4] <- c("Spp1","Spp2")
 ##import BGC prediction by model
 SSPredAll <- read.csv(file.choose())##import BGC predictions from CCISS script
 BGC <- gsub("/.*","",selectBGC)
+SSPredAll <- separate(SSPredAll, Model, c("GCM","Scenario","FuturePeriod"), sep = "_")
+SSPredAll$GCM <- paste(SSPredAll$GCM, SSPredAll$Scenario, sep = "-")
+SSPredAll <- SSPredAll[,-2]
 SSPredAll <- SSPredAll[SSPredAll$BGC == BGC,]
 SSPredAll <- SSPredAll[SSPredAll$FuturePeriod == 2025,]
 SSPredAll <- SSPredAll[SSPredAll$SiteNo %in% SiteList,]
@@ -371,7 +374,7 @@ simulateGrowth <- function(x){
 
 cleanFrontier <- function(EF.out.all, EF.ret.all){
   EF.out.all$NumNA <- apply(is.na(EF.out.all), 1, FUN = sum)##number of models where it didn't show up
-  EF.out.all <- EF.out.all[EF.out.all$NumNA < 16,] ##remove seed stock showing up in < 50% of models
+  EF.out.all <- EF.out.all[EF.out.all$NumNA < 25,] ##remove seed stock showing up in < 50% of models
   EF.out.all[is.na(EF.out.all)] <- 0
   EF.out.all$Mean <- apply(EF.out.all[,-c(1,2,length(EF.out.all))],1,mean) ### mean of weights
   for(R in EF.out.all$RA){###scale each out of 1
@@ -392,6 +395,9 @@ cleanFrontier <- function(EF.out.all, EF.ret.all){
   return(list(EF.sum, EF.ret.all))
 }
 
+modelYears <- 40
+modPeriod <- 2025
+
 ###foreach site
 allSites <- foreach(SNum = SiteList, .combine = combineList,.packages = c("scales", "foreach","reshape2","dplyr","magrittr","PortfolioAnalytics")) %dopar% {
   EF.out.all1 <- data.frame(Seed = "SBSmc2", RA = 2)
@@ -402,14 +408,17 @@ allSites <- foreach(SNum = SiteList, .combine = combineList,.packages = c("scale
   currBGC <- as.character(SSPred$BGC[1])
   
   SSPred <- merge(SSPred,SuitTable, by.x = "BGC.pred", by.y = "Site", all.x = TRUE)
+  
+  ##SSPred <- SSPred[complete.cases(SSPred),]
   modList <- as.character(unique(SSPred$GCM))
   output <- data.frame(Seed = SeedList)
   
   for(mod in modList){
     SSPredMod <- SSPred[SSPred$GCM == mod,]
-    returns <- data.frame(Year = seq(2000,2040,1))
-    modData1 <- data.frame(Year = seq(2000,2040,1))
-    modData2 <- data.frame(Year = seq(2000,2040,1))
+    if(any(is.na(SSPredMod$Seed))){next}
+    returns <- data.frame(Year = seq(2000,2000+modelYears,1))
+    modData1 <- data.frame(Year = seq(2000,2000+modelYears,1))
+    modData2 <- data.frame(Year = seq(2000,2000+modelYears,1))
     
     for(seed in SeedList){
       SSPredSd <- SSPredMod[SSPredMod$Seed == seed,]
@@ -446,7 +455,6 @@ allSites <- foreach(SNum = SiteList, .combine = combineList,.packages = c("scale
       returns <- modData
       rownames(returns) <- paste(returns$Year,"-01-01", sep = "")
       returns <- returns[,-1]
-      #returns <- returns[1:76,]
       returnsTS <- as.xts(returns)
       
       init.portfolio <- portfolio.spec(assets = colnames(returnsTS))
@@ -493,23 +501,35 @@ allSites <- foreach(SNum = SiteList, .combine = combineList,.packages = c("scale
   outList
 } 
 
-titles <- c("CBST Pl","", "CBST Sx")
+titles <- c("CBST Pine","", "CBST Spruce")
+zoneCols <- read.csv("PortfolioColours.csv")
 for(i in c(1,3)){
   EFall <- allSites[[i]]   
   EFall <- aggregate(Mean ~ Seed + RA, data = EFall, FUN = mean)
   maxW <- aggregate(Mean ~ Seed, data = EFall, FUN = max)
-  EFall <- EFall[EFall$Seed %in% maxW$Seed[maxW$Mean > 0.05],]
+  EFall <- EFall[EFall$Seed %in% maxW$Seed[maxW$Mean > 0.06],]
   for(R in unique(EFall$RA)){###scale each out of 1
     EFall$Mean[EFall$RA == R] <- EFall$Mean[EFall$RA == R]/sum(EFall$Mean[EFall$RA == R])
   }
   EFret <- aggregate(MeanRet ~ Risk, data = allSites[[i+1]], FUN = mean)
+  EFall <- merge(EFall,zoneCols, by.x = "Seed", by.y = "BGC", all.x = TRUE)
+  EFall$Labs <- NA
+  EFall <- foreach(x = unique(as.character(EFall$Seed)), .combine = rbind)%do%{
+    temp <- EFall[EFall$Seed == x,]
+    temp$Labs[temp$Mean == max(temp$Mean)] <- x
+    temp
+  }
+  EFall$Seed <- factor(EFall$Seed, levels = sort(unique(as.character(EFall$Seed))))
+  
   
   assign(paste("CBSTp",i, sep = ""),
-    ggplot(EFall)+
-    geom_bar(aes(x = RA, y = Mean, fill = Seed), stat = "identity")+
-    geom_line(data = EFret, aes(x = Risk, y = MeanRet), size = 2)+
-    scale_fill_discrete()+
-    labs(x = "Risk (0 = High Risk, 50 = Low Risk)", title = titles[i]))
+         ggplot(EFall)+
+           geom_bar(aes(x = RA, y = Mean, fill = Colour), size = 0.00001, col = 'black', stat = "identity")+
+           scale_fill_identity()+
+           geom_line(data = EFret, aes(x = Risk, y = MeanRet), size = 1)+
+           geom_label(aes(x = RA, y = Mean, label = Labs, group = Colour), position = position_stack(vjust = 0.5),size =2)+
+           labs(x = "Risk (0 = High Risk, 50 = Low Risk)", title = titles[i])
+  )
 }
 
 layoutMat <- rbind(c(1,1,1,1,2,2),
