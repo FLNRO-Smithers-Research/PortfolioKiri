@@ -25,7 +25,6 @@ library(magrittr)
 library(foreach)
 library(reshape2)
 library(scales)
-library(tidyr)
 
 wd=tk_choose.dir()
 setwd(wd)
@@ -94,13 +93,11 @@ SuitTable <- merge(SuitTablePl, SuitTableSx, by = c("Site","Seed"), all = TRUE)
 colnames(SuitTable)[3:4] <- c("Spp1","Spp2")
 
 ##import BGC prediction by model
-BGC <- "IDFdk3"
+BGC <- "SBSmc2"
 SSPredAll <- read.csv(file.choose())##import BGC predictions from CCISS script
-##SSPredAll <- Y2.sub
-
-SSPredAll <- separate(SSPredAll, Model, c("GCM","Scenario","FuturePeriod"), sep = "_")
+SSPredAll <- Y2.sub
 SSPredAll$GCM <- paste(SSPredAll$GCM, SSPredAll$Scenario, sep = "-")
-SSPredAll <- SSPredAll[,-2]
+
 SiteList <- unique(as.character(SSPredAll$SiteNo[SSPredAll$BGC == BGC]))
 SiteList <- sample(SiteList, 50, replace = FALSE)
 SSPredAll <- SSPredAll[SSPredAll$SiteNo %in% SiteList,]
@@ -141,7 +138,7 @@ simulateGrowth <- function(x){
 
 cleanFrontier <- function(EF.out.all, EF.ret.all){
   EF.out.all$NumNA <- apply(is.na(EF.out.all), 1, FUN = sum)##number of models where it didn't show up
-  EF.out.all <- EF.out.all[EF.out.all$NumNA < 25,] ##remove seed stock showing up in < 50% of models
+  EF.out.all <- EF.out.all[EF.out.all$NumNA < 16,] ##remove seed stock showing up in < 50% of models
   EF.out.all[is.na(EF.out.all)] <- 0
   EF.out.all$Mean <- apply(EF.out.all[,-c(1,2,length(EF.out.all))],1,mean) ### mean of weights
   for(R in EF.out.all$RA){###scale each out of 1
@@ -165,7 +162,7 @@ cleanFrontier <- function(EF.out.all, EF.ret.all){
 SSPredAllOrig <- SSPredAll
 periods <- list(2025, c(2025,2055),c(2025,2055,2085))
 time <- c(40, 70, 100)
-for(x in 1:3){
+for(x in 2:3){
   modPeriod <- periods[[x]]
   modelYears <- time[x]
   name <- paste("allSites",x,sep = "")
@@ -274,58 +271,26 @@ for(x in 1:3){
          } 
   )
 }
-load("BulkleySBSmc2.RData")
-zoneCols <- read.csv("PortfolioColours.csv")
-dataSets <- c("allSites1","allSites2","allSites3")
-periods <- c(2025,2055,2085)
-for(j in 1:3){
-  allSites <- get(dataSets[j])
-  titles <- c(paste("Pine",periods[j],sep = "-"),"", paste("Spruce",periods[j],sep = "-"))
-  for(i in c(1,3)){
-    EFall <- allSites[[i]]   
-    EFall <- aggregate(Mean ~ Seed + RA, data = EFall, FUN = mean)
-    maxW <- aggregate(Mean ~ Seed, data = EFall, FUN = max)
-    EFall <- EFall[EFall$Seed %in% maxW$Seed[maxW$Mean > 0.06],]
-    for(R in unique(EFall$RA)){###scale each out of 1
-      EFall$Mean[EFall$RA == R] <- EFall$Mean[EFall$RA == R]/sum(EFall$Mean[EFall$RA == R])
-    }
-    EFret <- aggregate(MeanRet ~ Risk, data = allSites[[i+1]], FUN = mean)
-    EFall <- merge(EFall,zoneCols, by.x = "Seed", by.y = "BGC", all.x = TRUE)
-    EFall$Labs <- NA
-    EFall <- foreach(x = unique(as.character(EFall$Seed)), .combine = rbind)%do%{
-      temp <- EFall[EFall$Seed == x,]
-      temp$Labs[temp$Mean == max(temp$Mean)] <- x
-      temp
-    }
-    EFall$Seed <- factor(EFall$Seed, levels = sort(unique(as.character(EFall$Seed))))
-    
-    
-    assign(paste("CBSTp",i,j, sep = "-"),
-           ggplot(EFall)+
-             geom_bar(aes(x = RA, y = Mean, fill = Colour), size = 0.00001, col = 'black', stat = "identity")+
-             scale_fill_identity()+
-             geom_line(data = EFret, aes(x = Risk, y = MeanRet), size = 1)+
-             geom_label(aes(x = RA, y = Mean, label = Labs, group = Colour), position = position_stack(vjust = 0.5),size =2)+
-             labs(x = "Risk (0 = High Risk, 50 = Low Risk)", title = titles[i])
-    )
+###foreach site
+allSites <- allSites2
+titles <- c("CBST Pl","", "CBST Sx")
+for(i in c(1,3)){
+  EFall <- allSites[[i]]   
+  EFall <- aggregate(Mean ~ Seed + RA, data = EFall, FUN = mean)
+  maxW <- aggregate(Mean ~ Seed, data = EFall, FUN = max)
+  EFall <- EFall[EFall$Seed %in% maxW$Seed[maxW$Mean > 0.08],]
+  for(R in unique(EFall$RA)){###scale each out of 1
+    EFall$Mean[EFall$RA == R] <- EFall$Mean[EFall$RA == R]/sum(EFall$Mean[EFall$RA == R])
   }
+  EFret <- aggregate(MeanRet ~ Risk, data = allSites[[i+1]], FUN = mean)
+  
+  assign(paste("CBSTp",i, sep = ""),
+         ggplot(EFall)+
+           geom_bar(aes(x = RA, y = Mean, fill = Seed), stat = "identity")+
+           geom_line(data = EFret, aes(x = Risk, y = MeanRet), size = 2)+
+           scale_fill_discrete()+
+           labs(x = "Risk (0 = High Risk, 50 = Low Risk)", title = titles[i]))
 }
-
-library(gridExtra)
-layMat <- rbind(c(1,2),
-                c(3,4),
-                c(5,6))
-grid.arrange(grobs = list(`CBSTp-1-1`,`CBSTp-3-1`,`CBSTp-1-2`,`CBSTp-3-2`,`CBSTp-1-3`,`CBSTp-3-3`),
-             layout_matrix = layMat)
-
-CBSTp1
-CBSTp3
-
-
-
-
-tempFun <- function(x){x$Labs[max(x$Mean)] <- x$Seed[1]}
-EFall <- by(EFall, EFall$Seed, FUN = tempFun)
 
 #####################################################
 
