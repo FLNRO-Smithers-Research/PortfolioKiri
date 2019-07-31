@@ -2,9 +2,6 @@
 ##It then uses the Markowitz portfolio method to calculate the optimal mix of species.
 ##Kiri Daust, June 2019
 
-
-##.libPaths("E:/R packages351")
-
 require(stats)
 require(rgl)
 require(tcltk)
@@ -29,43 +26,11 @@ require(doParallel)
 require(reticulate)
 require(Rcpp)
 
-# testFn <- function(annualDat){
-#   Returns <- vector(mode = "numeric", length = 101)
-#   nTrees <- 100 ##number of tree to start
-#   for (i in 1:101){ ##for each year
-#     height <- sum(annualDat$Growth[1:i]) ##total height
-#     Returns[i] <- nTrees*height ##volume
-#     if(runif(1, min = 0, max = 100) > annualDat$NoMort[i]){##will there be mortality?
-#       prevTrees <- nTrees
-#       percentDead <- rgamma(1, shape = 1, scale = annualDat$MeanDead[i])###what percent of trees will die based on gamma distribution?
-#       numDead <- (percentDead/100)*prevTrees###number of dead trees
-#       nTrees <- prevTrees - numDead ##update number of trees
-#     }
-#   } ##for each year
-#   return(Returns)
-# }
-# 
-# cppFunction("double testProb(int n, double shape, double scale){
-#               return(Rcpp::rgamma(n,shape,scale)[0]);
-#             }")
-# cppFunction("double testUnif(int n, double min, double max){
-#               return(Rcpp::runif(n,min,max)[0]);
-#             }")
-# 
-# set.seed(42); testFn(annualDat)
-# set.seed(42); simGrowthCpp(annualDat)
-# 
-# 
-# set.seed(314152)
-# simGrowthCpp(annualDat)
-# testFn(annualDat)
-
 rm(list=ls())
 ##wd=tk_choose.dir(); setwd(wd)
 setwd("C:/Users/Kiri Daust/Desktop/PortfolioKiri")
 sourceCpp("CppFunctions/SimGrowth.cpp")
 source_python("PythonFns/PortfolioOptimisation.py")
-##test <- ef_weights(returns, as.data.frame(sigma), seq(25,5,by = -2), 0)
 
 ###OPTIONAL: Set up to run loops in parallel###
 require(doParallel)
@@ -90,9 +55,6 @@ Trees <- c("Bl","Cw","Fd","Hw","Lw","Pl","Py","Sx") ##set species to use in port
 nSpp <- length(Trees)
 treeList <- Trees
 sigma <- sigma[Trees,Trees]
-# sigma <- as.matrix(sigma)
-# momentargs <- list()
-# momentargs$sigma <- sigma ##set up to use in PortfolioAnalystics 
 
 nsuitF <- file.choose() ##Import suitability table
 SuitTable <- read.csv(nsuitF, stringsAsFactors = FALSE)
@@ -112,23 +74,17 @@ SSPredAll <- SSPredAll[SSPredAll$SSCurrent == selectBGC,]
 
 #####Randomly select 100 sites############
 sites <- as.numeric(as.character(unique(SSPredAll$SiteNo)))
-SiteList <- sample(sites, 100, replace = FALSE)
+SiteList <- sample(sites, 50, replace = FALSE)
 SSPredAll <- SSPredAll[SSPredAll$SiteNo %in% SiteList,]
 
 SSPredAll <- SSPredAll[!is.na(SSPredAll$SSprob),]
 ########################
 
-combineList <- function(...) {##Combine multiple dataframe in foreach loop
-  mapply(FUN = rbind, ..., SIMPLIFY=FALSE)
-}
-
 ###foreach site
-allSitesSpp <- foreach(SNum = unique(SSPredAll$SiteNo), .combine = combineList, 
+allSitesSpp <- foreach(SNum = unique(SSPredAll$SiteNo)[1:10], .combine = rbind, 
                        .packages = c("foreach","reshape2","dplyr","magrittr","PortfolioAnalytics", "Rcpp"), 
-                       .noexport = c("simGrowthCpp","calcAssetsCpp")) %do% {
+                       .noexport = c("simGrowthCpp")) %do% {
     SSPred <- SSPredAll[SSPredAll$SiteNo == SNum,]
-    EF.out.all <- rep(1:25, each = nSpp)
-    EF.ret.all <- 1:25
     
     ##Merge SIBEC data
     SIBEC <- SIBEC[SIBEC$TreeSpp %in% Trees,]
@@ -168,7 +124,6 @@ allSitesSpp <- foreach(SNum = unique(SSPredAll$SiteNo), .combine = combineList,
       stop("There are partial duplicates in the suitablity table. Please fix them. :)")
     }
     
-    ##current$Suitability[current$TreeSpp == "Fd"] <- 3
     current[is.na(current)] <- 5
     current[current == 0] <- 10
     current <- data.frame(Spp = current$TreeSpp, FuturePeriod = 2000, MeanSI = current$MeanPlotSiteIndex, MeanSuit = current$Suitability)
@@ -196,10 +151,9 @@ allSitesSpp <- foreach(SNum = unique(SSPredAll$SiteNo), .combine = combineList,
     cols <- rainbow(length(treeList))
     annualDat <- data.frame("Year" = seq(2000,2100,1))
 
-    portOutput <- data.frame("Species" = treeList)###set up plot and output
     plot(0,0, type = "n", xlim = c(1,100), ylim = c(0,3000), xlab = "Year", ylab = "Volume")###plot
     
-    eff_front <- foreach(w = 1:50, .combine = rbind) %do% { ##number of iterations
+    eff_front <- foreach(w = 1:10, .combine = rbind) %do% { ##number of iterations
       output <- data.frame("year" = annualDat$Year)
       
       for (k in 1:nSpp){ ##for each tree
@@ -233,89 +187,40 @@ allSitesSpp <- foreach(SNum = unique(SSPredAll$SiteNo), .combine = combineList,
       returns <- output
       rownames(returns) <- returns[,1]
       returns <- returns[,-1]
-      target <- seq(30,5,by = -2)
-      ef_w <- ef_weights(returns, sigma, target,0)
-      ef_w$Return <- target
+      target <- seq(5,30,by = 2) ###if minimizing volatility
+      ##target <- seq(0.25,1,by = 0.05) ###if maximising return
+      ef <- ef_weights(returns, sigma, target,0,"stdev") ###change to "mean" for maximising return
+      maxSharpe <- max_sharpe_ratio(returns, sigma,0)
+      ef_w <- as.data.frame(ef[[1]])
+      colnames(ef_w) <- Trees
+      ef_w <- rbind(ef_w, maxSharpe)
+      ef_w$Sd <- c(ef[[2]],NA)
+      ef_w$Return <- c(target,"mSharpe")
       ef_w$It <- w
       ef_w
     }
     
     eff_front2 <- melt(eff_front, id.vars = c("Return","It"))
     eff_front2 <- dcast(eff_front2, Return ~ variable, fun.aggregate = mean)
-      
-      # returnsTS <- as.xts(returns) ###convert to time series object
-      # init.portfolio <- portfolio.spec(assets = colnames(returnsTS))
-      # init.portfolio <- add.constraint(portfolio = init.portfolio, type = "weight_sum", min_sum = 0.99, max_sum = 1.01) ###weights should add to about 1
-      # init.portfolio <- add.constraint(portfolio = init.portfolio, type = "box", min = rep(0, nSpp), max = rep(1, nSpp)) ##set min and max weight for each species
-      # 
-      # ###loop optimisation with increasing risk aversion to obtain efficient frontier
-      # for(q in seq(from = 2, to = 50, by = 2)){
-      #   qu <- add.objective(portfolio=init.portfolio, type="return", name="mean")
-      #   qu <- add.objective(portfolio=qu, type="risk", name="var", risk_aversion = q)
-      #   
-      #   minSD.opt <- optimize.portfolio(R = returnsTS, portfolio = qu, optimize_method = "ROI", trace = TRUE, momentargs = momentargs)
-      #   if(q == 2){
-      #     EF.out <-  as.data.frame(minSD.opt[["weights"]])
-      #     EF.ret <- as.data.frame(minSD.opt[["objective_measures"]][["mean"]])
-      #   }else{
-      #     temp <- as.data.frame(minSD.opt[["weights"]])
-      #     EF.out <- rbind(EF.out, temp)
-      #     EF.ret <- rbind(EF.ret, minSD.opt[["objective_measures"]][["mean"]])
-      #   }
-      #   
-      # }
-      # 
-      # ##set portfolio objectives (currently set to maximise return given certain risk aversion- Quadratic Utility)
-      # qu <- add.objective(portfolio=init.portfolio, type="return", name="mean")
-      # qu <- add.objective(portfolio=qu, type="risk", name="var", risk_aversion = 15) ###set risk_aversion
-      # 
-      # ##optimise
-      # minSD.opt <- optimize.portfolio(R = returnsTS, portfolio = qu, optimize_method = "ROI", trace = TRUE, momentargs = momentargs)
-      # test <- as.data.frame(minSD.opt[["weights"]]) ##save weights
-    #   colnames(test) <- "Run"
-    #   portOutput <- cbind(portOutput, test$Run)
-    #   
-    #   EF.out.all <- cbind(EF.out.all, EF.out)
-    #   EF.ret.all <- cbind(EF.ret.all, EF.ret)
-    #   
-    # }  
-    
-    ###calculate average of efficient portfolio weights and their returns for frontier chart
-    EF.ret.all$Mean <- apply(EF.ret.all[,-1],1,mean) ###mean of returns
-    EF.ret.all$EF.ret.all <- 2*EF.ret.all$EF.ret.all
-    EF.ret.all$Mean <- EF.ret.all$Mean/max(EF.ret.all$Mean) ##scale return out of 1
-    EF.ret.all <- EF.ret.all[,c(1,52)]
-    colnames(EF.ret.all) <- c("Risk","MeanRet")
-    EF.out.all$Mean <- apply(EF.out.all[,-1],1,mean) ### mean of weights
-    EF.sum <- data.frame(Spp = rep(treeList,25), 
-                         Risk = EF.out.all$EF.out.all*2, Weight = EF.out.all$Mean, Site = SNum)
-    
-    ###weights for violin plots
-    rownames(portOutput) <- portOutput$Species
-    portOutput <- portOutput[,-1]
-    portOut <- t(portOutput)
-    portOut <- as.data.frame(portOut)
-    portOut$Site <- SNum
-    
-    ###Combine into list
-    outList <- list(Frontier = EF.sum, Weights = portOut, Return = EF.ret.all)
-    outList
+    eff_front2$SiteNo <- SNum
+    eff_front2
 }
-
-EF.sum <- allSitesSpp$Frontier
-EF.sum <- aggregate(Weight ~ Spp + Risk, EF.sum, FUN = mean)
-EF.ret.all <- allSitesSpp$Return
-EF.ret.all <- aggregate(MeanRet ~ Risk, EF.ret.all, FUN = mean)
+efAll <- allSitesSpp
+efAll <- melt(allSitesSpp, id.vars = c("Return","SiteNo"))
+efAll <- dcast(efAll, Return ~ variable, fun.aggregate = mean)
+sharpe <- efAll[efAll$Return == "mSharpe",]
+efAll <- efAll[efAll$Return != "mSharpe",]
+efAll$Sd <- efAll$Sd/max(efAll$Sd)
+efAll$Return <- as.numeric(efAll$Return)
 myColours <- c("red","pink", "orange","yellow","green","blue","magenta","darkgoldenrod")
-names(myColours) <- levels(EF.sum$variable)
+names(myColours) <- levels(factor(Trees))
 colScale <- scale_fill_manual(name = "variable", values = myColours)
+efAll <- melt(efAll, id.vars = "Return")
 
-#####
-EF.sum <- melt(eff_front2, id.vars = "Return")
-
-ggplot(EF.sum)+
+ggplot(efAll[efAll$variable != "Sd",])+
   geom_bar(aes(x = Return, y = value, fill = variable),size = 0.00001, col = "black", stat = "identity")+
-  colScale
+  colScale +
+  geom_line(data = efAll[efAll$variable == "Sd",], aes(x = Return, y = value))
 
 ggplot(EF.sum)+
   geom_bar(aes(x = Risk, y = Weight, fill = Spp),size = 0.00001, col = "black", stat = "identity")+
@@ -716,4 +621,34 @@ sigma <- as.numeric(sigma)
 x <- seq(from = -2, to = 5, by = 0.05)
 y <- dgamma(x, shape = 1, scale = 4)
 plot(x,y, type = "l")
- 
+
+# testFn <- function(annualDat){
+#   Returns <- vector(mode = "numeric", length = 101)
+#   nTrees <- 100 ##number of tree to start
+#   for (i in 1:101){ ##for each year
+#     height <- sum(annualDat$Growth[1:i]) ##total height
+#     Returns[i] <- nTrees*height ##volume
+#     if(runif(1, min = 0, max = 100) > annualDat$NoMort[i]){##will there be mortality?
+#       prevTrees <- nTrees
+#       percentDead <- rgamma(1, shape = 1, scale = annualDat$MeanDead[i])###what percent of trees will die based on gamma distribution?
+#       numDead <- (percentDead/100)*prevTrees###number of dead trees
+#       nTrees <- prevTrees - numDead ##update number of trees
+#     }
+#   } ##for each year
+#   return(Returns)
+# }
+# 
+# cppFunction("double testProb(int n, double shape, double scale){
+#               return(Rcpp::rgamma(n,shape,scale)[0]);
+#             }")
+# cppFunction("double testUnif(int n, double min, double max){
+#               return(Rcpp::runif(n,min,max)[0]);
+#             }")
+# 
+# set.seed(42); testFn(annualDat)
+# set.seed(42); simGrowthCpp(annualDat)
+# 
+# 
+# set.seed(314152)
+# simGrowthCpp(annualDat)
+# testFn(annualDat)
