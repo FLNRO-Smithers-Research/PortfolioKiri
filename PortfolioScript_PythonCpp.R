@@ -25,6 +25,7 @@ require(reshape2)
 require(doParallel)
 require(reticulate)
 require(Rcpp)
+library(gridExtra)
 
 rm(list=ls())
 ##wd=tk_choose.dir(); setwd(wd)
@@ -65,7 +66,6 @@ colnames(SuitTable)[2] <- "SS_NoSpace"
 SIBEC <- read.csv("BartPredSI.csv", stringsAsFactors = FALSE)
 SIBEC <- SIBEC[,-4]
 colnames(SIBEC) <- c("SS_NoSpace", "TreeSpp","MeanPlotSiteIndex")
-##SIBEC <- SIBEC[,c("SS_NoSpace", "TreeSpp","MeanPlotSiteIndex")]
 
 SSPredAll <- read.csv(file.choose(), stringsAsFactors = FALSE) ##Import SS predictions from CCISS tool: must have columns MergedBGC, Source, SS_NoSpace, SSprob, SSCurrent, FuturePeriod, SiteNo
 
@@ -81,7 +81,7 @@ SSPredAll <- SSPredAll[!is.na(SSPredAll$SSprob),]
 ########################
 
 ###foreach site
-allSitesSpp <- foreach(SNum = unique(SSPredAll$SiteNo)[1:10], .combine = rbind, 
+allSitesSpp <- foreach(SNum = unique(SSPredAll$SiteNo), .combine = rbind, 
                        .packages = c("foreach","reshape2","dplyr","magrittr","PortfolioAnalytics", "Rcpp"), 
                        .noexport = c("simGrowthCpp")) %do% {
     SSPred <- SSPredAll[SSPredAll$SiteNo == SNum,]
@@ -216,11 +216,29 @@ myColours <- c("red","pink", "orange","yellow","green","blue","magenta","darkgol
 names(myColours) <- levels(factor(Trees))
 colScale <- scale_fill_manual(name = "variable", values = myColours)
 efAll <- melt(efAll, id.vars = "Return")
+sharpe <- sharpe[,Trees]
+sharpe <- as.data.frame(t(sharpe))
+colnames(sharpe) <- "Weight"
+sharpe$Spp <- rownames(sharpe)
 
-ggplot(efAll[efAll$variable != "Sd",])+
+ef_plot <- ggplot(efAll[efAll$variable != "Sd",])+
   geom_bar(aes(x = Return, y = value, fill = variable),size = 0.00001, col = "black", stat = "identity")+
   colScale +
-  geom_line(data = efAll[efAll$variable == "Sd",], aes(x = Return, y = value))
+  geom_line(data = efAll[efAll$variable == "Sd",], aes(x = Return, y = value))+
+  theme(legend.position = "none")
+
+maxS_plot <- ggplot(sharpe)+
+  geom_bar(aes(x = "", y = Weight, fill = Spp),size = 0.00001, col = "black", stat = "identity")+
+  colScale+
+  theme(axis.title.y = element_blank(),axis.text.y = element_blank(),axis.ticks.y = element_blank())+
+  xlab("")
+
+layoutMat <- rbind(c(1,1,1,2),
+                   c(1,1,1,2),
+                   c(1,1,1,2))
+
+grid.arrange(grobs = list(ef_plot,maxS_plot), layout_matrix = layoutMat)
+
 
 ggplot(EF.sum)+
   geom_bar(aes(x = Risk, y = Weight, fill = Spp),size = 0.00001, col = "black", stat = "identity")+

@@ -1,3 +1,6 @@
+//Kiri Daust
+//Cpp function for portfolio optimisation
+
 
 #include <Rcpp.h>
 using namespace Rcpp;
@@ -6,7 +9,7 @@ using namespace Rcpp;
 NumericVector simGrowthCpp(DataFrame DF){
 	NumericVector Returns(101);
 	int nTrees = 100;
-	NumericVector Growth = DF["Growth"];
+	NumericVector Growth = DF["Growth"]; //convert to vectors
 	NumericVector NoMort  = DF["NoMort"];
 	NumericVector MeanDead = DF["MeanDead"];
 	double height, percentDead;

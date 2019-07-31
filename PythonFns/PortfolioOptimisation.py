@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-Created on Mon Jul 29 16:43:29 2019
+Portfolio Optimisation for Tree Species
 
 @author: Kiri Daust
+Many functions based on Ricky Kim's script:
+https://towardsdatascience.com/efficient-frontier-portfolio-optimisation-in-python-e7844051e7f
 """
 
 import pandas as pd  
@@ -17,22 +19,22 @@ import scipy.optimize as sco
 #cov_matrix = pd.read_csv("CovMatSmal.csv",index_col = 0)
 #risk_free_rate = 0
 
-def portfolio_annualised_performance(weights, mean_returns, cov_matrix):
+def portfolio_annualised_performance(weights, mean_returns, cov_matrix): ###calculate return and stdev for given weights
     returns = np.sum(mean_returns*weights ) 
     std = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights)))
     return std, returns
 
-def portfolio_volatility(weights, mean_returns, cov_matrix):
+def portfolio_volatility(weights, mean_returns, cov_matrix): ##for minimising stdev
     return portfolio_annualised_performance(weights, mean_returns, cov_matrix)[0]
     
-def neg_port_return(weights, mean_returns, cov_matrix):
+def neg_port_return(weights, mean_returns, cov_matrix): ##for maximising return
     return -(portfolio_annualised_performance(weights, mean_returns, cov_matrix)[1])
 
-def neg_sharpe_ratio(weights, mean_returns, cov_matrix, risk_free_rate):
+def neg_sharpe_ratio(weights, mean_returns, cov_matrix, risk_free_rate): ###for maximising sharpe ration
     p_var, p_ret = portfolio_annualised_performance(weights, mean_returns, cov_matrix)
     return -(p_ret - risk_free_rate) / p_var
 
-def efficient_return(mean_returns, cov_matrix, target):
+def efficient_return(mean_returns, cov_matrix, target): ###efficient frontier for stdev
     num_assets = len(mean_returns)
     args = (mean_returns, cov_matrix)
 
@@ -45,7 +47,7 @@ def efficient_return(mean_returns, cov_matrix, target):
     result = sco.minimize(portfolio_volatility, num_assets*[1./num_assets,], args=args, method='SLSQP', bounds=bounds, constraints=constraints)
     return result
     
-def efficient_stdev(mean_returns, cov_matrix, target):
+def efficient_stdev(mean_returns, cov_matrix, target): ##efficient frontier for return
     num_assets = len(mean_returns)
     args = (mean_returns, cov_matrix)
 
@@ -70,7 +72,7 @@ def efficient_stdev(mean_returns, cov_matrix, target):
 # 
 #     return result
 
-def ef_weights(returns, cov_matrix, target, risk_free_rate, optType): ##optType either mean or stdev
+def ef_weights(returns, cov_matrix, target, risk_free_rate, optType): ##optType either mean or stdev - main R function
     spp = cov_matrix.columns
     mean_returns = returns.mean()
     if(optType == "stdev"):
@@ -90,7 +92,7 @@ def ef_weights(returns, cov_matrix, target, risk_free_rate, optType): ##optType 
     #w_df.columns = spp
     return(w_df,ep_optVal)
     
-def max_sharpe_ratio(returns, cov_matrix, risk_free_rate):
+def max_sharpe_ratio(returns, cov_matrix, risk_free_rate): ##weights for max sharpe ratio
     mean_returns = returns.mean()
     num_assets = len(mean_returns)
     args = (mean_returns, cov_matrix, risk_free_rate)
