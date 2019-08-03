@@ -61,7 +61,7 @@ nsuitF <- file.choose() ##Import suitability table
 SuitTable <- read.csv(nsuitF, stringsAsFactors = FALSE)
 SuitTable <- unique(SuitTable)
 
-colnames(SuitTable)[2] <- "SS_NoSpace"
+colnames(SuitTable)[2:4] <- c("SS_NoSpace","Spp","Suitability")
 
 SIBEC <- read.csv("BartPredSI.csv", stringsAsFactors = FALSE)
 SIBEC <- SIBEC[,-4]
@@ -80,8 +80,12 @@ SSPredAll <- SSPredAll[SSPredAll$SiteNo %in% SiteList,]
 SSPredAll <- SSPredAll[!is.na(SSPredAll$SSprob),]
 ########################
 
+combineList <- function(...) {##Combine multiple dataframe in foreach loop
+  mapply(FUN = rbind, ..., SIMPLIFY=FALSE)
+}
+SList <- unique(SSPredAll$SiteNo)[1:15]
 ###foreach site
-allSitesSpp <- foreach(SNum = unique(SSPredAll$SiteNo), .combine = rbind, 
+allSitesSpp <- foreach(SNum = SList, .combine = combineList, 
                        .packages = c("foreach","reshape2","dplyr","magrittr","PortfolioAnalytics", "Rcpp"), 
                        .noexport = c("simGrowthCpp")) %do% {
     SSPred <- SSPredAll[SSPredAll$SiteNo == SNum,]
@@ -103,7 +107,7 @@ allSitesSpp <- foreach(SNum = unique(SSPredAll$SiteNo), .combine = rbind,
       }
     }
     if(nrow(add) > 0){
-      add$MeanPlotSiteIndex <- 8 ##Set missing SI to 10
+      add$MeanPlotSiteIndex <- 5 ##Set missing SI to 10
       SSPred <- rbind(SSPred, add)
     }
     SSPred <- SSPred[!is.na(SSPred$TreeSpp),]
@@ -144,6 +148,8 @@ allSitesSpp <- foreach(SNum = unique(SSPredAll$SiteNo), .combine = rbind,
     
     SS.sum <- as.data.frame(SS.sum)
     SS.sum <- rbind(SS.sum, current)
+    SS.sum$MeanSI[SS.sum$MeanSuit == 4] <- 5
+    SS.sum$MeanSI[SS.sum$MeanSuit == 5] <- 0
     SS.sum$MeanSuit[SS.sum$MeanSuit == 5] <- 4
     SS.sum <- unique(SS.sum)
     SS.sum <- SS.sum[order(SS.sum$Spp,SS.sum$FuturePeriod),]
@@ -153,10 +159,12 @@ allSitesSpp <- foreach(SNum = unique(SSPredAll$SiteNo), .combine = rbind,
 
     plot(0,0, type = "n", xlim = c(1,100), ylim = c(0,3000), xlab = "Year", ylab = "Volume")###plot
     
-    eff_front <- foreach(w = 1:10, .combine = rbind) %do% { ##number of iterations
+    eff_front <- foreach(w = 1:4, .combine = combineList) %do% { ##number of iterations
       output <- data.frame("year" = annualDat$Year)
+      growthSim <- data.frame(Spp = character(), Year = numeric(), Returns = numeric())
       
       for (k in 1:nSpp){ ##for each tree
+        
         DatSpp <- SS.sum[SS.sum$Spp == treeList[k],]
         SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.5,0.5,1,4), 
                                "NoMort" = c(70,60,50,30)) ####ProbDead- out of 100 trees, how many will die each year at each suitability. NoMort- Percent of time no mortality
@@ -174,7 +182,9 @@ allSitesSpp <- foreach(SNum = unique(SSPredAll$SiteNo), .combine = rbind,
         lines(Returns, type = 'l', col = cols[k])##plot
         tmpR <- c(0,Returns)
         assets <- Returns - tmpR[-length(tmpR)]
-        
+        #lines(assets,type = 'l', col = cols[k])
+        temp <- data.frame(Spp = rep(treeList[k],101), Year = 1:101, Returns = Returns)
+        growthSim <- rbind(growthSim, temp)
         output <- cbind(output, assets)
       } ## for each tree species
       
@@ -187,27 +197,71 @@ allSitesSpp <- foreach(SNum = unique(SSPredAll$SiteNo), .combine = rbind,
       returns <- output
       rownames(returns) <- returns[,1]
       returns <- returns[,-1]
-      target <- seq(5,30,by = 2) ###if minimizing volatility
-      ##target <- seq(0.25,1,by = 0.05) ###if maximising return
-      ef <- ef_weights(returns, sigma, target,0,"stdev") ###change to "mean" for maximising return
-      maxSharpe <- max_sharpe_ratio(returns, sigma,0)
+      use <- colnames(returns)[colMeans(returns) > 1]
+      returns <- returns[,use]
+      sigma2 <- as.data.frame(cor(returns))
+      ##sigma2 <- sigma[use,use]
+      if(SNum == SList[1] && w == 1){
+        target <- seq(0.1,1.2,by = 0.05) ###if maximising return
+        ef <- ef_weights(returns, sigma2, target,0,"mean") ###change to "mean" for maximising return
+        temp <- ef[[2]]
+        indMax <- which(temp == max(temp))
+        temp <- temp[1:indMax]
+        d1 <- c(temp,0) - c(0,temp)
+        d2 <- c(d1,0) - c(0,d1)
+        d2[c(1,length(d2))] <- 0
+        indMin <- which(d2 == max(d2))
+        target <- seq(0.05*(indMin-1),0.05*indMax,by = 0.03)
+      }
+      ef <- ef_weights(returns, sigma2, target,0,"mean") ###change to "mean" for maximising return
+      maxSharpe <- max_sharpe_ratio(returns, sigma2,0)
       ef_w <- as.data.frame(ef[[1]])
-      colnames(ef_w) <- Trees
+      colnames(ef_w) <- use
+      notUse <- setdiff(Trees, use)
+      temp <- as.data.frame(matrix(data = 0, nrow = length(target)+1, ncol = length(notUse)))
+      colnames(temp) <- notUse
       ef_w <- rbind(ef_w, maxSharpe)
+      ef_w <- cbind(ef_w, temp)
       ef_w$Sd <- c(ef[[2]],NA)
       ef_w$Return <- c(target,"mSharpe")
+      ef_w <- ef_w[,c(Trees, "Sd","Return")]
+      
+      
+      # #############################################
+      # efAll <- ef_w[ef_w$Return != "mSharpe",]
+      # efAll$Sd <- efAll$Sd/max(efAll$Sd)
+      # efAll$Return <- as.numeric(efAll$Return)
+      # efAll <- melt(efAll, id.vars = "Return")
+      # print(ggplot(efAll[efAll$variable != "Sd",])+
+      #   geom_bar(aes(x = Return, y = value, fill = variable),size = 0.00001, col = "black", stat = "identity")+
+      #   colScale +
+      #   geom_line(data = efAll[efAll$variable == "Sd",], aes(x = Return, y = value))+
+      #   #theme(legend.position = "none")+
+      #   xlab("Volatility"))
+      # ############################################
       ef_w$It <- w
-      ef_w
+      
+      sigmaOut <- sigma2
+      sigmaOut$Row <- rownames(sigmaOut)
+      sigmaOut <- melt(sigmaOut)
+      colnames(sigmaOut)[2] <- "Column"
+      sigmaOut$It <- 4
+      list(frontier = ef_w, sim = growthSim, sig = sigmaOut)
     }
     
-    eff_front2 <- melt(eff_front, id.vars = c("Return","It"))
+    eff_front2 <- melt(eff_front[['frontier']], id.vars = c("Return","It"))
     eff_front2 <- dcast(eff_front2, Return ~ variable, fun.aggregate = mean)
     eff_front2$SiteNo <- SNum
-    eff_front2
+    growthSim <- eff_front$sim
+    growthSim$SiteNo <- SNum
+    sigmaOut <- eff_front$sig
+    sigmaOut$SiteNo <- SNum
+    list(frontier = eff_front2, sim = growthSim, sig = sigmaOut)
 }
-efAll <- allSitesSpp
-efAll <- melt(allSitesSpp, id.vars = c("Return","SiteNo"))
-efAll <- dcast(efAll, Return ~ variable, fun.aggregate = mean)
+
+efAll <- melt(allSitesSpp[['frontier']], id.vars = c("Return","SiteNo"))
+efAll <- efAll[!is.nan(efAll$value),]
+efAll <- dcast(efAll, Return ~ variable, fun.aggregate = mean, rm.nan = T)
 sharpe <- efAll[efAll$Return == "mSharpe",]
 efAll <- efAll[efAll$Return != "mSharpe",]
 efAll$Sd <- efAll$Sd/max(efAll$Sd)
@@ -221,11 +275,12 @@ sharpe <- as.data.frame(t(sharpe))
 colnames(sharpe) <- "Weight"
 sharpe$Spp <- rownames(sharpe)
 
-ef_plot <- ggplot(efAll[efAll$variable != "Sd",])+
+ggplot(efAll[efAll$variable != "Sd",])+
   geom_bar(aes(x = Return, y = value, fill = variable),size = 0.00001, col = "black", stat = "identity")+
   colScale +
   geom_line(data = efAll[efAll$variable == "Sd",], aes(x = Return, y = value))+
-  theme(legend.position = "none")
+  #theme(legend.position = "none")+
+  xlab("Volatility")
 
 maxS_plot <- ggplot(sharpe)+
   geom_bar(aes(x = "", y = Weight, fill = Spp),size = 0.00001, col = "black", stat = "identity")+
@@ -239,6 +294,21 @@ layoutMat <- rbind(c(1,1,1,2),
 
 grid.arrange(grobs = list(ef_plot,maxS_plot), layout_matrix = layoutMat)
 
+simGrowth <- allSitesSpp[['sim']]
+simGrowth <- dcast(simGrowth, SiteNo+Year ~ Spp, fun.aggregate = mean, value.var = "Returns")
+simGrowth <- melt(simGrowth, id.vars = c("SiteNo","Year"))
+simGrowth$g <- interaction(simGrowth$SiteNo, simGrowth$variable)
+
+myColours <- c("red","pink", "orange","yellow","green","blue","magenta","darkgoldenrod")
+names(myColours) <- levels(factor(Trees))
+colScale <- scale_colour_manual(name = "variable", values = myColours)
+ggplot(simGrowth, aes(x = as.numeric(Year), y = value, colour = variable, group = g))+
+  geom_line(alpha = 0.8)+
+  colScale
+
+
+sig <- allSitesSpp$sig
+sig <- dcast(sig, Row ~ Column, value.var = "value", fun.aggregate = mean)
 
 ggplot(EF.sum)+
   geom_bar(aes(x = Risk, y = Weight, fill = Spp),size = 0.00001, col = "black", stat = "identity")+
