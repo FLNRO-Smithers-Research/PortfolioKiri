@@ -11,39 +11,40 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.optimize as sco
+import math
 
-#df = pd.read_csv("TestReturns.csv")
+#df = pd.read_csv("TempReturns.csv")
 #spp = cov_matrix.columns
 #returns = df
 #mean_returns = returns.mean()
-#cov_matrix = pd.read_csv("CovMatSmal.csv",index_col = 0)
+#cov_matrix = pd.read_csv("TempCov.csv",index_col = 0)
 #risk_free_rate = 0
 
-def portfolio_annualised_performance(weights, mean_returns, cov_matrix): ###calculate return and stdev for given weights
-    returns = np.sum(mean_returns*weights ) 
-    std = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights)))
-    return std, returns
-
+###setup basic functions##########
 def portfolio_volatility(weights, mean_returns, cov_matrix): ##for minimising stdev
-    return portfolio_annualised_performance(weights, mean_returns, cov_matrix)[0]
+    return np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights)))
+    
+def portfolio_return(weights, mean_returns, cov_matrix): ##for maximising return
+    returns = np.sum(mean_returns*weights) 
+    return returns
     
 def neg_port_return(weights, mean_returns, cov_matrix): ##for maximising return
-    retAdj = [x - 2 if x < 3 else x for x in mean_returns]
+    #retAdj = [x - 2 if x < 3 else x for x in mean_returns]
+    retAdj = mean_returns
     returns = np.sum(retAdj*weights) 
     return -(returns)
 
-def neg_sharpe_ratio(weights, mean_returns, cov_matrix, risk_free_rate): ###for maximising sharpe ration
-    p_var, p_ret = portfolio_annualised_performance(weights, mean_returns, cov_matrix)
-    return -(p_ret - risk_free_rate) / p_var
-
+###calculate efficient frontier points
 def efficient_return(mean_returns, cov_matrix, target): ###efficient frontier for stdev
     num_assets = len(mean_returns)
     args = (mean_returns, cov_matrix)
 
     def portfolio_return(weights):
-        return portfolio_annualised_performance(weights, mean_returns, cov_matrix)[1]
+        return np.sum(mean_returns*weights)
 
     constraints = ({'type': 'eq', 'fun': lambda x: portfolio_return(x) - target},
+        # {'type': 'ineq', 'fun': lambda x: portfolio_return(x) - (target+0.01)},
+        #             {'type': 'ineq', 'fun': lambda x: (target-0.01) - portfolio_return(x)},
                    {'type': 'eq', 'fun': lambda x: np.sum(x) - 1})
     bounds = tuple((0,1) for asset in range(num_assets))
     result = sco.minimize(portfolio_volatility, num_assets*[1./num_assets,], args=args, method='SLSQP', bounds=bounds, constraints=constraints)
@@ -53,28 +54,33 @@ def efficient_stdev(mean_returns, cov_matrix, target): ##efficient frontier for 
     num_assets = len(mean_returns)
     args = (mean_returns, cov_matrix)
 
-    def portfolio_return(weights): ###stdev
-        return portfolio_annualised_performance(weights, mean_returns, cov_matrix)[0]
+    def portfolio_stdev(weights): ###stdev
+        return np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights)))
 
-    constraints = ({'type': 'eq', 'fun': lambda x: portfolio_return(x) - target}, ##stdev == target
+    constraints = ({'type': 'eq', 'fun': lambda x: portfolio_stdev(x) - target},##stdev == target
                    {'type': 'eq', 'fun': lambda x: np.sum(x) - 1})
     bounds = tuple((0,1) for asset in range(num_assets))
-    result = sco.minimize(neg_port_return, num_assets*[1./num_assets,], args=args, method='SLSQP', bounds=bounds, constraints=constraints)
+    result = sco.minimize(neg_port_return, num_assets*[1./num_assets,], args=args, method='SLSQP', bounds=bounds, constraints=constraints, jac = '2-point')
     return result
+    
+def set_target(returns, cov_matrix):
+    mean_returns = returns.mean()
+    num_assets = len(mean_returns)
+    args = (mean_returns, cov_matrix)
+    constraints = ({'type': 'eq', 'fun': lambda x: np.sum(x) - 1})
+    bound = (0.0,1.0)
+    bounds = tuple(bound for asset in range(num_assets))
+    min_var_w = sco.minimize(portfolio_volatility, num_assets*[1./num_assets,], args=args,
+                        method='SLSQP', bounds=bounds, constraints=constraints)
+    min_var = portfolio_return(min_var_w['x'], mean_returns, cov_matrix)
+    min_round = round(min_var,0)
+    max_round = math.ceil(max(mean_returns))
+    ##min_round = round(min_var*2,1)/2
+    target = np.arange(min_round, max_round+1, step = 1)
+    return target
 
-# def min_variance(mean_returns, cov_matrix):
-#     num_assets = len(mean_returns)
-#     args = (mean_returns, cov_matrix)
-#     constraints = ({'type': 'eq', 'fun': lambda x: np.sum(x) - 1})
-#     bound = (0.0,1.0)
-#     bounds = tuple(bound for asset in range(num_assets))
-# 
-#     result = sco.minimize(portfolio_volatility, num_assets*[1./num_assets,], args=args,
-#                         method='SLSQP', bounds=bounds, constraints=constraints)
-# 
-#     return result
-
-def ef_weights(returns, cov_matrix, target, risk_free_rate, optType): ##optType either mean or stdev - main R function
+###efficient frontier - main function in R
+def ef_weights(returns, cov_matrix, target, optType): ##optType either mean or stdev - main R function
     spp = cov_matrix.columns
     mean_returns = returns.mean()
     if(optType == "stdev"):
@@ -86,25 +92,13 @@ def ef_weights(returns, cov_matrix, target, risk_free_rate, optType): ##optType 
         efficients = []
         for ret in target:
             efficients.append(efficient_stdev(mean_returns, cov_matrix, ret))
-        ep_optVal = [portfolio_annualised_performance(x['x'], mean_returns, cov_matrix)[1] for x in efficients]
+        ep_optVal = [portfolio_return(x['x'], mean_returns, cov_matrix) for x in efficients]
             
     ep_optVal = np.array(ep_optVal)
     ep_w = [x['x'] for x in efficients]
     w_df = np.array(ep_w)
-    #w_df.columns = spp
     return(w_df,ep_optVal)
-    
-def max_sharpe_ratio(returns, cov_matrix, risk_free_rate): ##weights for max sharpe ratio
-    mean_returns = returns.mean()
-    num_assets = len(mean_returns)
-    args = (mean_returns, cov_matrix, risk_free_rate)
-    constraints = ({'type': 'eq', 'fun': lambda x: np.sum(x) - 1})
-    bound = (0.0,1.0)
-    bounds = tuple(bound for asset in range(num_assets))
-    result = sco.minimize(neg_sharpe_ratio, num_assets*[1./num_assets,], args=args,
-                        method='SLSQP', bounds=bounds, constraints=constraints)
-    r2 = pd.DataFrame(result.x,index=cov_matrix.columns,columns=['Weight'])
-    return r2.T
+
 
 #max_sharpe = max_sharpe_ratio(mean_returns, cov_matrix, risk_free_rate)
 #sdp, rp = portfolio_annualised_performance(max_sharpe['x'], mean_returns, cov_matrix)
@@ -127,3 +121,21 @@ def max_sharpe_ratio(returns, cov_matrix, risk_free_rate): ##weights for max sha
 #ep = [x['fun'] for x in efficient_portfolios]
 #plt.figure(figsize=(10, 7))
 #plt.plot(ep, target, linestyle='-.', color='black', label='efficient frontier')
+
+# def neg_sharpe_ratio(weights, mean_returns, cov_matrix, risk_free_rate): ###for maximising sharpe ration
+#     p_ret = np.sum(mean_returns*weights ) 
+#     p_var = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights)))
+#     return -(p_ret - risk_free_rate) / p_var
+# 
+# def max_sharpe_ratio(returns, cov_matrix, risk_free_rate): ##weights for max sharpe ratio
+#     mean_returns = returns.mean()
+#     num_assets = len(mean_returns)
+#     args = (mean_returns, cov_matrix, risk_free_rate)
+#     constraints = ({'type': 'eq', 'fun': lambda x: np.sum(x) - 1})
+#     bound = (0.0,1.0)
+#     bounds = tuple(bound for asset in range(num_assets))
+#     result = sco.minimize(neg_sharpe_ratio, num_assets*[1./num_assets,], args=args,
+#                         method='SLSQP', bounds=bounds, constraints=constraints)
+#     r2 = pd.DataFrame(result.x,index=cov_matrix.columns,columns=['Weight'])
+#     return r2.T
+# 

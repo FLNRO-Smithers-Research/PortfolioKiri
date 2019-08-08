@@ -68,13 +68,16 @@ SIBEC <- SIBEC[,-4]
 colnames(SIBEC) <- c("SS_NoSpace", "TreeSpp","MeanPlotSiteIndex")
 
 SSPredAll <- read.csv(file.choose(), stringsAsFactors = FALSE) ##Import SS predictions from CCISS tool: must have columns MergedBGC, Source, SS_NoSpace, SSprob, SSCurrent, FuturePeriod, SiteNo
-
+SSPredAll <- SSPredAll[,c("MergedBGC", "Source", "SS_NoSpace", "SSprob", "SSCurrent", 
+                          "FuturePeriod", "SiteNo")]
 selectBGC <- select.list(choices = sort(unique(SSPredAll$SSCurrent)), graphics = TRUE) ###Select BGC to run for
 SSPredAll <- SSPredAll[SSPredAll$SSCurrent == selectBGC,]
-
+SSPredSave <- SSPredAll
+SSPredAll <- SSPredSave
 #####Randomly select 100 sites############
-sites <- as.numeric(as.character(unique(SSPredAll$SiteNo)))
-SiteList <- sample(sites, 50, replace = FALSE)
+# sites <- as.numeric(as.character(unique(SSPredAll$SiteNo)))
+# SiteList <- sample(sites, 50, replace = FALSE)
+SiteList <- unique(SSPredAll$SiteNo[grep("Plat",SSPredAll$SiteNo)])
 SSPredAll <- SSPredAll[SSPredAll$SiteNo %in% SiteList,]
 
 SSPredAll <- SSPredAll[!is.na(SSPredAll$SSprob),]
@@ -83,7 +86,8 @@ SSPredAll <- SSPredAll[!is.na(SSPredAll$SSprob),]
 combineList <- function(...) {##Combine multiple dataframe in foreach loop
   mapply(FUN = rbind, ..., SIMPLIFY=FALSE)
 }
-SList <- unique(SSPredAll$SiteNo)[1:15]
+SList <- unique(SSPredAll$SiteNo)
+
 ###foreach site
 allSitesSpp <- foreach(SNum = SList, .combine = combineList, 
                        .packages = c("foreach","reshape2","dplyr","magrittr","PortfolioAnalytics", "Rcpp"), 
@@ -159,7 +163,7 @@ allSitesSpp <- foreach(SNum = SList, .combine = combineList,
 
     plot(0,0, type = "n", xlim = c(1,100), ylim = c(0,3000), xlab = "Year", ylab = "Volume")###plot
     
-    eff_front <- foreach(w = 1:4, .combine = combineList) %do% { ##number of iterations
+    eff_front <- foreach(w = 1:2, .combine = combineList) %do% { ##number of iterations
       output <- data.frame("year" = annualDat$Year)
       growthSim <- data.frame(Spp = character(), Year = numeric(), Returns = numeric())
       
@@ -200,32 +204,20 @@ allSitesSpp <- foreach(SNum = SList, .combine = combineList,
       use <- colnames(returns)[colMeans(returns) > 1]
       returns <- returns[,use]
       sigma2 <- as.data.frame(cor(returns))
-      ##sigma2 <- sigma[use,use]
-      if(SNum == SList[1] && w == 1){
-        target <- seq(0.1,1.2,by = 0.05) ###if maximising return
-        ef <- ef_weights(returns, sigma2, target,0,"mean") ###change to "mean" for maximising return
-        temp <- ef[[2]]
-        indMax <- which(temp == max(temp))
-        temp <- temp[1:indMax]
-        d1 <- c(temp,0) - c(0,temp)
-        d2 <- c(d1,0) - c(0,d1)
-        d2[c(1,length(d2))] <- 0
-        indMin <- which(d2 == max(d2))
-        target <- seq(0.05*(indMin-1),0.05*indMax,by = 0.03)
-      }
-      ef <- ef_weights(returns, sigma2, target,0,"mean") ###change to "mean" for maximising return
-      maxSharpe <- max_sharpe_ratio(returns, sigma2,0)
+      target <- set_target(returns, sigma2)
+      
+      ef <- ef_weights(returns, sigma2, target,"stdev") ###change to "mean" for maximising return
+      #maxSharpe <- max_sharpe_ratio(returns, sigma2,0)
       ef_w <- as.data.frame(ef[[1]])
       colnames(ef_w) <- use
       notUse <- setdiff(Trees, use)
-      temp <- as.data.frame(matrix(data = 0, nrow = length(target)+1, ncol = length(notUse)))
+      temp <- as.data.frame(matrix(data = 0, nrow = length(target), ncol = length(notUse)))
       colnames(temp) <- notUse
-      ef_w <- rbind(ef_w, maxSharpe)
+      ##ef_w <- rbind(ef_w, maxSharpe)
       ef_w <- cbind(ef_w, temp)
-      ef_w$Sd <- c(ef[[2]],NA)
-      ef_w$Return <- c(target,"mSharpe")
+      ef_w$Sd <- c(ef[[2]])
+      ef_w$Return <- round(target,3)
       ef_w <- ef_w[,c(Trees, "Sd","Return")]
-      
       
       # #############################################
       # efAll <- ef_w[ef_w$Return != "mSharpe",]
@@ -261,26 +253,30 @@ allSitesSpp <- foreach(SNum = SList, .combine = combineList,
 
 efAll <- melt(allSitesSpp[['frontier']], id.vars = c("Return","SiteNo"))
 efAll <- efAll[!is.nan(efAll$value),]
+#efAll <- dcast(efAll, Return ~ variable, fun.aggregate = length)
 efAll <- dcast(efAll, Return ~ variable, fun.aggregate = mean, rm.nan = T)
-sharpe <- efAll[efAll$Return == "mSharpe",]
-efAll <- efAll[efAll$Return != "mSharpe",]
+colnames(efAll)[c(1,length(efAll))] <- c("Sd","Return")
+# sharpe <- efAll[efAll$Return == "mSharpe",]
+# efAll <- efAll[efAll$Return != "mSharpe",]
 efAll$Sd <- efAll$Sd/max(efAll$Sd)
 efAll$Return <- as.numeric(efAll$Return)
 myColours <- c("red","pink", "orange","yellow","green","blue","magenta","darkgoldenrod")
 names(myColours) <- levels(factor(Trees))
 colScale <- scale_fill_manual(name = "variable", values = myColours)
+
 efAll <- melt(efAll, id.vars = "Return")
-sharpe <- sharpe[,Trees]
-sharpe <- as.data.frame(t(sharpe))
-colnames(sharpe) <- "Weight"
-sharpe$Spp <- rownames(sharpe)
+# sharpe <- sharpe[,Trees]
+# sharpe <- as.data.frame(t(sharpe))
+# colnames(sharpe) <- "Weight"
+# sharpe$Spp <- rownames(sharpe)
 
 ggplot(efAll[efAll$variable != "Sd",])+
-  geom_bar(aes(x = Return, y = value, fill = variable),size = 0.00001, col = "black", stat = "identity")+
+  geom_area(aes(x = Return, y = value, fill = variable),size = 0.00001, col = "black", stat = "identity")+
   colScale +
   geom_line(data = efAll[efAll$variable == "Sd",], aes(x = Return, y = value))+
-  #theme(legend.position = "none")+
-  xlab("Volatility")
+  scale_x_reverse() +
+  xlab("Volatility")+
+  ggtitle("Plat IDFdk3")
 
 maxS_plot <- ggplot(sharpe)+
   geom_bar(aes(x = "", y = Weight, fill = Spp),size = 0.00001, col = "black", stat = "identity")+
@@ -303,7 +299,7 @@ myColours <- c("red","pink", "orange","yellow","green","blue","magenta","darkgol
 names(myColours) <- levels(factor(Trees))
 colScale <- scale_colour_manual(name = "variable", values = myColours)
 ggplot(simGrowth, aes(x = as.numeric(Year), y = value, colour = variable, group = g))+
-  geom_line(alpha = 0.8)+
+  geom_line(alpha = 0.6)+
   colScale
 
 
@@ -740,3 +736,18 @@ plot(x,y, type = "l")
 # set.seed(314152)
 # simGrowthCpp(annualDat)
 # testFn(annualDat)
+if(SNum == SList[1] && w == 1){
+  target <- seq(0.1,1.2,by = 0.05) ###if maximising return
+  ef <- ef_weights(returns, sigma2, target,0,"mean") ###change to "mean" for maximising return
+  temp <- ef[[2]]
+  indMax <- which(temp == max(temp))
+  temp <- temp[1:indMax]
+  d1 <- c(temp,0) - c(0,temp)
+  d2 <- c(d1,0) - c(0,d1)
+  d2[c(1,length(d2))] <- 0
+  indMin <- which(d2 == max(d2))
+  target <- seq(0.05*(indMin-1),0.05*indMax,by = 0.03)
+}
+target <- seq(0.55,0.75,by = 0.02)
+target <- seq(0.65, 0.8, by = 0.01)
+target <- seq(0.3,0.65, by = 0.02)
