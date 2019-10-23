@@ -1,5 +1,9 @@
-
-!archive/*
-.Rhistory
-
 .Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+/inputs/
+/outputs/
+/old/
+/!archive/*
+/functions/
