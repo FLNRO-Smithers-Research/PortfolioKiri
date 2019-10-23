@@ -4,12 +4,13 @@ library(foreach)
 library(data.table)
 library(dplyr)
 
+
 ###Site Index testing###############
-setwd("C:/Users/Kiri Daust/Desktop/PortfolioKiri")
-SIdat <- fread("BartPredSI.csv", data.table = F)
-edaDat <- fread("Edatopic_v11_7.csv", data.table = F)
+
+SIdat <- fread("./inputs/BartPredSI.csv", data.table = F)
+edaDat <- fread("./inputs/Edatopic_v11_7.csv", data.table = F)
 edaDat <- edaDat[edaDat$Source %in% c("BECv10","BECv11"),c("MergedBGC", "SS_NoSpace","Edatopic")]
-suitDat <- fread("TreeSpp_ESuit_v11_18.csv", data.table = F)
+suitDat <- fread("./inputs/TreeSpp_ESuit_v11_18.csv", data.table = F)
 suitDat <- suitDat[suitDat$Unit %in% unique(edaDat$SS_NoSpace),c("Unit","Spp","ESuit")]
 SIdat <- SIdat[,-4]
 
@@ -24,7 +25,7 @@ dat$SIPred <- round(dat$SIPred,1)
 dat <- unique(dat)
 dat <- dat[!is.na(dat$Edatopic),]
 
-setwd("C:/Users/Kiri Daust/Desktop/PortfolioKiri/SI_Grids")
+
 out <- foreach(BGC = unique(dat$Subzone), .combine = rbind) %do% {
   sub <- dat[dat$Subzone == BGC,]
   gridDat <- foreach(eda = unique(sub$Edatopic), .combine = rbind) %do% {
@@ -73,7 +74,7 @@ out <- foreach(BGC = unique(dat$Subzone), .combine = rbind) %do% {
   gridDat$Alpha <- gsub("[[:digit:]]","",gridDat$Edatopic)
   gridDat$Numeric <- gsub("[[:upper:]]","",gridDat$Edatopic) %>% as.numeric()
   ##plot
-  pdf(file = paste("SIGrid_",BGC,".pdf",sep = ""), height = 10.5, paper = "letter")
+  pdf(file = paste("./outputs/SIGrid_",BGC,".pdf",sep = ""), height = 10.5, paper = "letter")
   print(ggplot(data = gridDat)+
           geom_tile(aes(x= Alpha, y = Numeric), color = "black", fill = "white")+
           geom_text(aes(x = Alpha, y = Numeric, label = Label), size = 2.4)+
