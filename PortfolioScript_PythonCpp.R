@@ -24,8 +24,8 @@ library(tidyr)
 rm(list=ls())
 ##wd=tk_choose.dir(); setwd(wd)
 ###source C++ and Python Scripts
-setwd("C:/Users/Kiri Daust/Desktop/PortfolioKiri")
-setwd(tk_choose.dir())
+#setwd("C:/Users/Kiri Daust/Desktop/PortfolioKiri")
+#setwd(tk_choose.dir())
 sourceCpp("CppFunctions/SimGrowth.cpp")
 source_python("PythonFns/PortfolioOptimisation.py") ###make sure you have python as a path variable - easiest way is to install Anaconda
 
@@ -37,7 +37,7 @@ source_python("PythonFns/PortfolioOptimisation.py") ###make sure you have python
 # registerDoParallel(coreNo, cores = coreNum)
 
 
-sigma <- read.csv("CovarianceMatrix_Full.csv")
+sigma <- read.csv("Inputs/CovarianceMatrix_Full.csv")
 rownames(sigma) <- sigma[,1]
 sigma <- sigma[,-1]
 Trees <- c("Bl","Cw","Fd","Hw","Lw","Pl","Py","Sx") ##set species to use in portfolio
@@ -59,7 +59,7 @@ SuitTable <- unique(SuitTable)
 
 colnames(SuitTable)[2:4] <- c("SS_NoSpace","Spp","Suitability")
 
-SIBEC <- read.csv("BartPredSI.csv", stringsAsFactors = FALSE) ###import SI data
+SIBEC <- read.csv("Inputs/BartPredSI.csv", stringsAsFactors = FALSE) ###import SI data
 SIBEC <- SIBEC[,-4]
 colnames(SIBEC) <- c("SS_NoSpace", "TreeSpp","MeanPlotSiteIndex")
 
@@ -418,7 +418,7 @@ coreNum <- as.numeric(detectCores()-2)
 cl <- makeCluster(coreNum)
 registerDoParallel(cl, cores = coreNum)
 
-###foreach spp
+###foreach spp - not yet working with all species, do each species individually
 allSitesSpp <- foreach(Spp = Trees, .combine = combineList) %do% {
   SuitTable <- allSppDat[allSppDat$Spp == Spp,]
   SuitTable <- SuitTable[,-4]
@@ -519,6 +519,9 @@ allSitesSpp <- foreach(Spp = Trees, .combine = combineList) %do% {
   
 }
 
+########################OLD CODE#################################
+
+####################################################################
 
 titles <- c("CBST Pine","", "CBST Spruce")
 zoneCols <- read.csv("PortfolioColours.csv")
