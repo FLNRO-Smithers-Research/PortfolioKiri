@@ -28,18 +28,16 @@ require(Rcpp)
 library(gridExtra)
 
 rm(list=ls())
-##wd=tk_choose.dir(); setwd(wd)
-setwd("C:/Users/Kiri Daust/Desktop/PortfolioKiri")
-sourceCpp("CppFunctions/SimGrowth.cpp")
-source_python("PythonFns/PortfolioOptimisation.py")
+sourceCpp("./functions/SimGrowth.cpp")
+source_python("./functions/PortfolioOptimisation.py")
 
 ###OPTIONAL: Set up to run loops in parallel###
-require(doParallel)
 set.seed(123321)
 coreNum <- as.numeric(detectCores()-2)
 coreNo <- makeCluster(coreNum)
 registerDoParallel(coreNo, cores = coreNum)
-##clusterEvalQ(coreNo, .libPaths("E:/R packages351"))
+
+###
 
 repeat.before = function(x) {   # repeats the last non NA value. Keeps leading NA
   ind = which(!is.na(x))      # get positions of nonmissing values
@@ -49,7 +47,7 @@ repeat.before = function(x) {   # repeats the last non NA value. Keeps leading N
     c(ind, length(x) + 1) )) # diffing the indices + length yields how often 
 }
 
-sigma <- read.csv("CovarianceMatrix_Full.csv")
+sigma <- read.csv("./inputs/CovarianceMatrix_Full.csv")
 rownames(sigma) <- sigma[,1]
 sigma <- sigma[,-1]
 Trees <- c("Bl","Cw","Fd","Hw","Lw","Pl","Py","Sx") ##set species to use in portfolio
@@ -57,17 +55,17 @@ nSpp <- length(Trees)
 treeList <- Trees
 sigma <- sigma[Trees,Trees]
 
-nsuitF <- file.choose() ##Import suitability table
-SuitTable <- read.csv(nsuitF, stringsAsFactors = FALSE)
-SuitTable <- unique(SuitTable)
+nsuitF <- fread("./inputs/TreeSpp_ESuit_v11_18.csv") ##Import suitability table
+#SuitTable <- read.csv(nsuitF, stringsAsFactors = FALSE)
+SuitTable <- unique(nsuitF)
 
 colnames(SuitTable)[2:4] <- c("SS_NoSpace","Spp","Suitability")
 
-SIBEC <- read.csv("BartPredSI.csv", stringsAsFactors = FALSE)
+SIBEC <- read.csv("./inputs/BartPredSI.csv", stringsAsFactors = FALSE)
 SIBEC <- SIBEC[,-4]
 colnames(SIBEC) <- c("SS_NoSpace", "TreeSpp","MeanPlotSiteIndex")
 
-SSPredAll <- read.csv(file.choose(), stringsAsFactors = FALSE) ##Import SS predictions from CCISS tool: must have columns MergedBGC, Source, SS_NoSpace, SSprob, SSCurrent, FuturePeriod, SiteNo
+SSPredAll <- fread(file.choose(), stringsAsFactors = FALSE) ##Import SS predictions from CCISS tool: must have columns MergedBGC, Source, SS_NoSpace, SSprob, SSCurrent, FuturePeriod, SiteNo
 SSPredAll <- SSPredAll[,c("MergedBGC", "Source", "SS_NoSpace", "SSprob", "SSCurrent", 
                           "FuturePeriod", "SiteNo")]
 selectBGC <- select.list(choices = sort(unique(SSPredAll$SSCurrent)), graphics = TRUE) ###Select BGC to run for
