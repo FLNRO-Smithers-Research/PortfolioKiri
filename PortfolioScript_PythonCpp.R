@@ -37,7 +37,7 @@ source_python("PythonFns/PortfolioOptimisation.py") ###make sure you have python
 # registerDoParallel(coreNo, cores = coreNum)
 
 
-sigma <- read.csv("Inputs/CovarianceMatrix_Full.csv")
+sigma <- read.csv("InputsGit/CovarianceMatrix_Full.csv")
 rownames(sigma) <- sigma[,1]
 sigma <- sigma[,-1]
 Trees <- c("Bl","Cw","Fd","Hw","Lw","Pl","Py","Sx") ##set species to use in portfolio
@@ -59,7 +59,7 @@ SuitTable <- unique(SuitTable)
 
 colnames(SuitTable)[2:4] <- c("SS_NoSpace","Spp","Suitability")
 
-SIBEC <- read.csv("Inputs/BartPredSI.csv", stringsAsFactors = FALSE) ###import SI data
+SIBEC <- read.csv("InputsGit/BartPredSI.csv", stringsAsFactors = FALSE) ###import SI data
 SIBEC <- SIBEC[,-4]
 colnames(SIBEC) <- c("SS_NoSpace", "TreeSpp","MeanPlotSiteIndex")
 
@@ -95,7 +95,7 @@ boundDat <- data.frame(Spp = Trees, Min = minWt, Max = maxWt)
 
 
 ###foreach site
-allSitesSpp <- foreach(SNum = SList[1:15], .combine = combineList, 
+allSitesSpp <- foreach(SNum = SList[1:20], .combine = combineList, 
                        .packages = c("foreach","reshape2","dplyr","magrittr","PortfolioAnalytics", "Rcpp"), 
                        .noexport = c("simGrowthCpp")) %do% {
     SSPred <- SSPredAll[SSPredAll$SiteNo == SNum,] ###subset
@@ -268,9 +268,8 @@ efAll <- allSitesSpp[['frontier']] ###portfolio output
 efAll$Return <- round(efAll$Return, digits = 2)
 efAll <- efAll[,-length(efAll)]
 efAll <- melt(efAll, id.vars = "Return") %>% dcast(Return ~ variable, fun.aggregate = mean)
-efAll <- apply(efAll, 2, repeat.before) %>% as.data.frame()
+efAll <- efAll[complete.cases(efAll),]
 efAll$Return <- efAll$Return/max(efAll$Return) ##standardise return
-efAll[is.na(efAll)] <- 0
 ef1 <- c(efAll$Sd,1)
 ef2 <- c(0, efAll$Sd)
 temp <- ef1 - ef2
