@@ -13,11 +13,11 @@ import matplotlib.pyplot as plt
 import scipy.optimize as sco
 import math
 
-#df = pd.read_csv("TempReturns.csv")
+#df = pd.read_csv("TestReturns.csv")
 #spp = cov_matrix.columns
 #returns = df
 #mean_returns = returns.mean()
-#cov_matrix = pd.read_csv("TempCov.csv",index_col = 0)
+#cov_matrix = pd.read_csv("TestSigma.csv",index_col = 0)
 #risk_free_rate = 0
 
 ###setup basic functions##########
@@ -85,6 +85,38 @@ def set_target(returns, cov_matrix):
     target = np.linspace(min_round, max_round+1, 20)
     return target
 
+def ef_weights_cbst(returns, cov_matrix, target, minWt, maxWt, minTot): ##optType either mean or stdev - main R function
+    spp = cov_matrix.columns
+    sppUse = spp
+    mean_returns = returns.mean()
+    bounds = set_bounds(minWt, maxWt, mean_returns)
+    bndNew = bounds
+    while(len(mean_returns) > 1): ###if any < minTot, loop through and remove
+        efficients = []
+        for ret in target:
+            efficients.append(efficient_stdev(mean_returns, cov_matrix, ret, bndNew))
+        ep_w = [x['x'] for x in efficients]
+        w_df = np.array(ep_w)
+        if(any(np.max(w_df, axis = 0) < minTot)):
+            sppUse = np.array(list(sppUse[np.max(w_df, axis = 0) > minTot]))###remove spcies from covmat, returns, and bounds
+            cov_matrix = cov_matrix.loc[sppUse, sppUse]
+            mean_returns = mean_returns[sppUse]
+            indUse = [b for a,b in zip(spp, range(len(spp))) if a in sppUse]
+            bndNew = [bounds[i] for i in indUse]
+            
+        else:
+            break
+        
+    w_df = pd.DataFrame(w_df)
+    w_df.columns = sppUse
+    ep_optVal = [portfolio_volatility(x['x'], mean_returns, cov_matrix) for x in efficients]        
+    ep_optVal = np.array(ep_optVal)
+    ep_retVal = [portfolio_return(x['x'], mean_returns, cov_matrix) for x in efficients]        
+    ep_retVal = np.array(ep_retVal)
+    
+    return(w_df,ep_optVal,ep_retVal)
+
+
 ###efficient frontier - main function in R
 def ef_weights(returns, cov_matrix, target, minWt, maxWt, minTot): ##optType either mean or stdev - main R function
     spp = cov_matrix.columns
@@ -98,8 +130,8 @@ def ef_weights(returns, cov_matrix, target, minWt, maxWt, minTot): ##optType eit
             efficients.append(efficient_return(mean_returns, cov_matrix, ret, bndNew))
         ep_w = [x['x'] for x in efficients]
         w_df = np.array(ep_w)
-        if(any(np.mean(w_df, axis = 0) < minTot)):
-            sppUse = list(spp[np.mean(w_df, axis = 0) > minTot])###remove spcies from covmat, returns, and bounds
+        if(any(np.max(w_df, axis = 0) < minTot)):
+            sppUse = list(spp[np.max(w_df, axis = 0) > minTot])###remove spcies from covmat, returns, and bounds
             cov_matrix = cov_matrix.loc[sppUse, sppUse]
             mean_returns = mean_returns[sppUse]
             indUse = [b for a,b in zip(spp, range(len(spp))) if a in sppUse]
