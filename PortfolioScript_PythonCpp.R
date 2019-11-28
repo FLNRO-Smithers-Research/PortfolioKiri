@@ -22,6 +22,7 @@ library(scales)
 library(tidyr)
 
 rm(list=ls())
+
 ##wd=tk_choose.dir(); setwd(wd)
 ###source C++ and Python Scripts
 setwd("C:/Users/kirid/Desktop/PortfolioKiri")
@@ -38,6 +39,7 @@ source_python("PythonFns/PortfolioOptimisation.py") ###make sure you have python
 
 
 sigma <- read.csv("InputsGit/CovarianceMatrix_Full.csv")
+
 rownames(sigma) <- sigma[,1]
 sigma <- sigma[,-1]
 Trees <- c("Bl","Cw","Fd","Hw","Lw","Pl","Py","Sx") ##set species to use in portfolio
@@ -60,10 +62,12 @@ SuitTable <- unique(SuitTable)
 colnames(SuitTable)[2:4] <- c("SS_NoSpace","Spp","Suitability")
 
 SIBEC <- read.csv("InputsGit/BartPredSI.csv", stringsAsFactors = FALSE) ###import SI data
+
+
 SIBEC <- SIBEC[,-4]
 colnames(SIBEC) <- c("SS_NoSpace", "TreeSpp","MeanPlotSiteIndex")
 
-SSPredAll <- read.csv(file.choose(), stringsAsFactors = FALSE) ##Import SS predictions from CCISS tool: must have columns MergedBGC, Source, SS_NoSpace, SSprob, SSCurrent, FuturePeriod, SiteNo
+SSPredAll <- fread(file.choose(), stringsAsFactors = FALSE) ##Import SS predictions from CCISS tool: must have columns MergedBGC, Source, SS_NoSpace, SSprob, SSCurrent, FuturePeriod, SiteNo
 SSPredAll <- SSPredAll[,c("MergedBGC", "Source", "SS_NoSpace", "SSprob", "SSCurrent", 
                           "FuturePeriod", "SiteNo")]
 selectBGC <- select.list(choices = sort(unique(SSPredAll$SSCurrent)), graphics = TRUE) ###Select BGC to run for
