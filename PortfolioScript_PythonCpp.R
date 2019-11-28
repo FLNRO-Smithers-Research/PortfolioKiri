@@ -22,21 +22,10 @@ library(scales)
 library(tidyr)
 
 rm(list=ls())
-<<<<<<< HEAD
-sourceCpp("./functions/SimGrowth.cpp")
-source_python("./functions/PortfolioOptimisation.py")
 
-###OPTIONAL: Set up to run loops in parallel###
-set.seed(123321)
-coreNum <- as.numeric(detectCores()-2)
-coreNo <- makeCluster(coreNum)
-registerDoParallel(coreNo, cores = coreNum)
-
-###
-=======
 ##wd=tk_choose.dir(); setwd(wd)
 ###source C++ and Python Scripts
-#setwd("C:/Users/Kiri Daust/Desktop/PortfolioKiri")
+setwd("C:/Users/kirid/Desktop/PortfolioKiri")
 #setwd(tk_choose.dir())
 sourceCpp("CppFunctions/SimGrowth.cpp")
 source_python("PythonFns/PortfolioOptimisation.py") ###make sure you have python as a path variable - easiest way is to install Anaconda
@@ -47,14 +36,10 @@ source_python("PythonFns/PortfolioOptimisation.py") ###make sure you have python
 # coreNum <- as.numeric(detectCores()-2)
 # coreNo <- makeCluster(coreNum)
 # registerDoParallel(coreNo, cores = coreNum)
->>>>>>> 2838a00e0f3512c8d6fb538313dc6d0d5ef521de
 
 
-<<<<<<< HEAD
-sigma <- read.csv("./inputs/CovarianceMatrix_Full.csv")
-=======
-sigma <- read.csv("Inputs/CovarianceMatrix_Full.csv")
->>>>>>> 2838a00e0f3512c8d6fb538313dc6d0d5ef521de
+sigma <- read.csv("InputsGit/CovarianceMatrix_Full.csv")
+
 rownames(sigma) <- sigma[,1]
 sigma <- sigma[,-1]
 Trees <- c("Bl","Cw","Fd","Hw","Lw","Pl","Py","Sx") ##set species to use in portfolio
@@ -62,15 +47,6 @@ nSpp <- length(Trees)
 treeList <- Trees
 sigma <- sigma[Trees,Trees]
 
-<<<<<<< HEAD
-nsuitF <- fread("./inputs/TreeSpp_ESuit_v11_18.csv") ##Import suitability table
-#SuitTable <- read.csv(nsuitF, stringsAsFactors = FALSE)
-SuitTable <- unique(nsuitF)
-
-colnames(SuitTable)[2:4] <- c("SS_NoSpace","Spp","Suitability")
-
-SIBEC <- read.csv("./inputs/BartPredSI.csv", stringsAsFactors = FALSE)
-=======
 repeat.before = function(x) {   # repeats the last non NA value. Keeps leading NA
   ind = which(!is.na(x))      # get positions of nonmissing values
   if(is.na(x[1]))             # if it begins with a missing, add the 
@@ -85,8 +61,9 @@ SuitTable <- unique(SuitTable)
 
 colnames(SuitTable)[2:4] <- c("SS_NoSpace","Spp","Suitability")
 
-SIBEC <- read.csv("Inputs/BartPredSI.csv", stringsAsFactors = FALSE) ###import SI data
->>>>>>> 2838a00e0f3512c8d6fb538313dc6d0d5ef521de
+SIBEC <- read.csv("InputsGit/BartPredSI.csv", stringsAsFactors = FALSE) ###import SI data
+
+
 SIBEC <- SIBEC[,-4]
 colnames(SIBEC) <- c("SS_NoSpace", "TreeSpp","MeanPlotSiteIndex")
 
@@ -122,7 +99,7 @@ boundDat <- data.frame(Spp = Trees, Min = minWt, Max = maxWt)
 
 
 ###foreach site
-allSitesSpp <- foreach(SNum = SList[1:15], .combine = combineList, 
+allSitesSpp <- foreach(SNum = SList[1:20], .combine = combineList, 
                        .packages = c("foreach","reshape2","dplyr","magrittr","PortfolioAnalytics", "Rcpp"), 
                        .noexport = c("simGrowthCpp")) %do% {
     SSPred <- SSPredAll[SSPredAll$SiteNo == SNum,] ###subset
@@ -295,9 +272,8 @@ efAll <- allSitesSpp[['frontier']] ###portfolio output
 efAll$Return <- round(efAll$Return, digits = 2)
 efAll <- efAll[,-length(efAll)]
 efAll <- melt(efAll, id.vars = "Return") %>% dcast(Return ~ variable, fun.aggregate = mean)
-efAll <- apply(efAll, 2, repeat.before) %>% as.data.frame()
+efAll <- efAll[complete.cases(efAll),]
 efAll$Return <- efAll$Return/max(efAll$Return) ##standardise return
-efAll[is.na(efAll)] <- 0
 ef1 <- c(efAll$Sd,1)
 ef2 <- c(0, efAll$Sd)
 temp <- ef1 - ef2
@@ -315,7 +291,7 @@ ggplot(efAll[efAll$variable != "Return",])+
   geom_line(data = efAll[efAll$variable == "Return",], aes(x = Sd, y = value))+
   scale_x_reverse() +
   xlab("Volatility")+
-  ggtitle("Plat IDFdk3")
+  ggtitle("EleHill IDFdk3")
 
 #############################################################3
 ###plot by return#####################
@@ -446,7 +422,8 @@ cl <- makeCluster(coreNum)
 registerDoParallel(cl, cores = coreNum)
 
 ###foreach spp - not yet working with all species, do each species individually
-allSitesSpp <- foreach(Spp = Trees, .combine = combineList) %do% {
+##allSitesSpp <- foreach(Spp = Trees, .combine = combineList) %do% {
+  Spp = "Pli"
   SuitTable <- allSppDat[allSppDat$Spp == Spp,]
   SuitTable <- SuitTable[,-4]
   
@@ -459,11 +436,11 @@ allSitesSpp <- foreach(Spp = Trees, .combine = combineList) %do% {
     SSPred <- merge(SSPred,SuitTable, by.x = "BGC.pred", by.y = "Site", all.x = TRUE)
     
     modList <- as.character(unique(SSPred$GCM))
-    output <- data.frame(Sd = numeric(), variable = character(), value = numeric(), Model = character())
+    output <- data.frame(Return = numeric(), variable = character(), value = numeric(), Model = character())
     temp <- unique(SSPred$Seed)
     ##output <- data.frame(Sd = rep(seq(0.2,1,by = 0.1), length(temp)), Seed = rep(temp, each = 9))
     ##output <- data.frame(Sd = numeric(), Seed = character())
-    graphList <- list()
+    #graphList <- list()
     
     for(mod in modList){
       cat("Model",mod,"\n")
@@ -496,9 +473,10 @@ allSitesSpp <- foreach(Spp = Trees, .combine = combineList) %do% {
       rownames(returns) <- returns[,1]
       returns <- returns[,-1]
       sigma2 <- as.data.frame(cor(returns)) ###to create cov mat from returns
-      target <- set_target(returns, sigma2) ###find range of efficient frontier
+      ##target <- set_target(returns, sigma2) ###find range of efficient frontier
+      target <- seq(0.3,1,by = 0.02)
       
-      ef <- ef_weights(returns, sigma2, target, 0, 1, 0.1) ###change to "mean" for maximising return - main python function
+      ef <- ef_weights_cbst(returns, sigma2, target, 0, 1, 0.15) ###change to "mean" for maximising return - main python function
       ef_w <- as.data.frame(ef[[1]])
       ef_w$Sd <- c(ef[[2]])
       ###########################################
@@ -515,36 +493,50 @@ allSitesSpp <- foreach(Spp = Trees, .combine = combineList) %do% {
       #                        ggtitle(mod) +
       #                        theme(legend.text = element_text(size=8, face="bold")))
       # 
-      # temp <- data.frame(Sd = seq(0.2,1, by = 0.1))
-      # dat$Sd <- round(dat$Sd, digits = 1)
-      # dat <- melt(dat, id.vars = "Sd") %>% dcast(Sd ~ variable, fun.aggregate = mean)
+      #temp <- data.frame(Sd = seq(0.2,1, by = 0.1))
+      dat$Sd <- round(dat$Sd, digits = 1)
+      dat$Return <- round(dat$Return, digits = 1)
+      ##dat <- melt(dat, id.vars = "Sd") %>% dcast(Sd ~ variable, fun.aggregate = mean)
       # dat <- merge(temp,dat, by = "Sd", all = T)
       # dat <- apply(dat,2, repeat.before) %>% as.data.frame()
       # dat[is.na(dat)] <- 0
       # dat <- melt(dat, id.vars = "Sd")
-      # dat$Model <- mod
-      # output <- rbind(output, dat)
+      dat <- melt(dat, id.vars = "Return")
+      dat$Model <- mod
+      output <- rbind(output, dat)
       
       #######################################################
     }
     output$SiteNo <- SNum
     output
   } 
-  allSites <- allSites[complete.cases(allSites),]
-  dat <- allSites
+  #allSites <- allSites[complete.cases(allSites),]
+  dat <- output
   dat <- dat[!is.nan(dat$value),]
-  dat <- dcast(dat, Sd ~ variable, fun.aggregate = mean, na.rm = T)
-  dat <- apply(dat, 2, repeat.before) %>% as.data.frame()
-  dat <- dat[,colMeans(dat) > 0.2]
+  dat <- dcast(dat, Return ~ variable, fun.aggregate = mean, na.rm = T)
+  dat <- dat[,colMeans(dat, na.rm = T) > 0.2]
+  #dat <- apply(dat, 2, repeat.before) %>% as.data.frame()
+  #dat <- dat[13:72,]
+  datRet <- melt(dat, id.vars = "Return")
+  datRet <- datRet[datRet$variable != "Sd",]
+  for(R in unique(datRet$Return)){###scale each out of 1
+    datRet$value[datRet$Return == R] <- datRet$value[datRet$Return == R]/sum(datRet$value[datRet$Return == R])
+  }
+  ggplot(datRet)+
+    geom_area(aes(x = Return, y = value, fill = variable),size = 0.00001, col = "black", stat = "identity")+
+    ggtitle("CBST by Return")
   
   dat <- melt(dat, id.vars = "Sd")
+  dat <- dat[dat$variable != "Return",]
   for(R in unique(dat$Sd)){###scale each out of 1
     dat$value[dat$Sd == R] <- dat$value[dat$Sd == R]/sum(dat$value[dat$Sd == R])
   }
   ggplot(dat)+
-    geom_area(aes(x = Sd, y = value, fill = variable),size = 0.00001, col = "black", stat = "identity")
+    geom_area(aes(x = Sd, y = value, fill = variable),size = 0.00001, col = "black", stat = "identity")+
+    scale_x_reverse(limits = c(1,0.6))+
+    ggtitle("CBST by Volatility")
   
-}
+#}
 
 ########################OLD CODE#################################
 
