@@ -22,7 +22,6 @@ library(scales)
 library(tidyr)
 
 rm(list=ls())
-
 ##wd=tk_choose.dir(); setwd(wd)
 ###source C++ and Python Scripts
 setwd("C:/Users/kirid/Desktop/PortfolioKiri")
@@ -39,7 +38,6 @@ source_python("PythonFns/PortfolioOptimisation.py") ###make sure you have python
 
 
 sigma <- read.csv("InputsGit/CovarianceMatrix_Full.csv")
-
 rownames(sigma) <- sigma[,1]
 sigma <- sigma[,-1]
 Trees <- c("Bl","Cw","Fd","Hw","Lw","Pl","Py","Sx") ##set species to use in portfolio
@@ -62,12 +60,10 @@ SuitTable <- unique(SuitTable)
 colnames(SuitTable)[2:4] <- c("SS_NoSpace","Spp","Suitability")
 
 SIBEC <- read.csv("InputsGit/BartPredSI.csv", stringsAsFactors = FALSE) ###import SI data
-
-
 SIBEC <- SIBEC[,-4]
 colnames(SIBEC) <- c("SS_NoSpace", "TreeSpp","MeanPlotSiteIndex")
 
-SSPredAll <- fread(file.choose(), stringsAsFactors = FALSE) ##Import SS predictions from CCISS tool: must have columns MergedBGC, Source, SS_NoSpace, SSprob, SSCurrent, FuturePeriod, SiteNo
+SSPredAll <- read.csv(file.choose(), stringsAsFactors = FALSE) ##Import SS predictions from CCISS tool: must have columns MergedBGC, Source, SS_NoSpace, SSprob, SSCurrent, FuturePeriod, SiteNo
 SSPredAll <- SSPredAll[,c("MergedBGC", "Source", "SS_NoSpace", "SSprob", "SSCurrent", 
                           "FuturePeriod", "SiteNo")]
 selectBGC <- select.list(choices = sort(unique(SSPredAll$SSCurrent)), graphics = TRUE) ###Select BGC to run for
@@ -102,167 +98,167 @@ boundDat <- data.frame(Spp = Trees, Min = minWt, Max = maxWt)
 allSitesSpp <- foreach(SNum = SList[1:20], .combine = combineList, 
                        .packages = c("foreach","reshape2","dplyr","magrittr","PortfolioAnalytics", "Rcpp"), 
                        .noexport = c("simGrowthCpp")) %do% {
-    SSPred <- SSPredAll[SSPredAll$SiteNo == SNum,] ###subset
-    
-    ##Merge SIBEC data
-    SIBEC <- SIBEC[SIBEC$TreeSpp %in% Trees,]
-    SSPred <- SSPred[,c(6,3,4)]
-    SSPred <- merge(SSPred, SIBEC, by = "SS_NoSpace", all.x = TRUE)
-    
-    ###Add rows for species with missing SI - usually don't need this but safer to keep in
-    add <- foreach(Year = unique(SSPred$FuturePeriod), .combine = rbind) %do%{
-      byYear <- SSPred[SSPred$FuturePeriod == Year,]
-      foreach(SS = unique(byYear$SS_NoSpace), .combine = rbind) %do%{
-        bySS <- byYear[byYear$SS_NoSpace == SS,]
-        missing <- Trees[!Trees %in% bySS$TreeSpp]
-        new <- bySS[rep(1,length(missing)),]
-        new$TreeSpp <- missing
-        new
-      }
-    }
-    if(nrow(add) > 0){
-      add$MeanPlotSiteIndex <- 5 ##Set missing SI
-      SSPred <- rbind(SSPred, add)
-    }
-    SSPred <- SSPred[!is.na(SSPred$TreeSpp),]
-    colnames(SSPred)[4] <- "Spp"
-    
-    ##Add suitability
-    SSPred <- merge(SSPred, SuitTable, by = c("SS_NoSpace","Spp"), all.x = TRUE)
-    SSPred$Suitability[is.na(SSPred$Suitability)] <- 5
-    
-    ###Create current data
-    current <- SIBEC[SIBEC$SS_NoSpace == selectBGC,] %>% 
-      merge(SuitTable, by.x = c("TreeSpp","SS_NoSpace"), by.y = c("Spp","SS_NoSpace"), all.x = TRUE) %>%
-      unique()
-    
-    ###check that there aren't errors in the table
-    temp <- aggregate(SS_NoSpace ~ TreeSpp, current, FUN = length)
-    if(any(temp$SS_NoSpace > 1)){
-      stop("There are partial duplicates in the suitablity table. Please fix them. :)")
-    }
-    
-    current[is.na(current)] <- 5
-    current[current == 0] <- 10
-    current <- data.frame(Spp = current$TreeSpp, FuturePeriod = 2000, MeanSI = current$MeanPlotSiteIndex, MeanSuit = current$Suitability)
-    
-    missing <- Trees[!Trees %in% current$Spp]
-    if(length(missing) > 0){
-      new <- current[rep(1,length(missing)),]
-      new$Spp <- missing
-      new$MeanSI <- 10
-      new$MeanSuit <- 5
-      current <- rbind(current, new)
-    }
-    
-    ##Summarise data- average SI and Suit weighted by SSProb
-    SS.sum <- SSPred %>%
-      group_by(Spp, FuturePeriod) %>%
-      summarise(MeanSI = sum(MeanPlotSiteIndex*(SSprob/sum(SSprob))), MeanSuit = round(sum(Suitability*(SSprob/sum(SSprob))), digits = 0))
-    
-    SS.sum <- as.data.frame(SS.sum) %>% 
-      rbind(current)
-    SS.sum$MeanSI[SS.sum$MeanSuit == 4] <- 5
-    SS.sum$MeanSI[SS.sum$MeanSuit == 5] <- 0
-    SS.sum$MeanSuit[SS.sum$MeanSuit == 5] <- 4
-    SS.sum <- unique(SS.sum)
-    SS.sum <- SS.sum[order(SS.sum$Spp,SS.sum$FuturePeriod),]
-    
-    cols <- rainbow(length(treeList))
-    annualDat <- data.frame("Year" = seq(2000,2100,1))
-
-    plot(0,0, type = "n", xlim = c(1,100), ylim = c(0,3000), xlab = "Year", ylab = "Volume")###plot
-    
-    eff_front <- foreach(w = 1, .combine = combineList) %do% { ##number of iterations
-      output <- data.frame("year" = annualDat$Year)
-      growthSim <- data.frame(Spp = character(), Year = numeric(), Returns = numeric())
-      
-      for (k in 1:nSpp){ ##for each tree
-        
-        DatSpp <- SS.sum[SS.sum$Spp == treeList[k],]
-        SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.5,0.5,1,4), 
-                               "NoMort" = c(70,60,50,30)) ####ProbDead- out of 100 trees, how many will die each year at each suitability. NoMort- Percent of time no mortality
-        dat <- data.frame("Period" = c(2000,2025,2055,2085), "SIBEC" = DatSpp$MeanSI, "Suit" = DatSpp$MeanSuit)
-        dat$SIBEC <- dat$SIBEC/50 ##for mean annual increment
-        dat <- merge(dat, SuitProb, by = "Suit")
-        s <- approx(dat$Period, dat$SIBEC, n = 101) ##Smooth SI
-        p <- approx(dat$Period, dat$ProbDead, n = 101) ###Smooth Prob Dead
-        m <- approx(dat$Period, dat$NoMort, n = 101) ##Smooth No Mort
-        
-        ###data frame of annual data
-        annualDat <- data.frame("Year" = seq(2000,2100,1), "Growth" = s[["y"]], "MeanDead" = p[["y"]], "NoMort" = m[["y"]]) ##create working data
-        
-        Returns <- simGrowthCpp(DF = annualDat)
-        lines(Returns, type = 'l', col = cols[k])##plot
-        tmpR <- c(0,Returns)
-        assets <- Returns - tmpR[-length(tmpR)]
-        temp <- data.frame(Spp = rep(treeList[k],101), Year = 1:101, Returns = Returns)
-        growthSim <- rbind(growthSim, temp)
-        output <- cbind(output, assets)
-      } ## for each tree species
-      
-      legend("topleft", treeList, col = cols, pch = 15)
-      
-      colnames(output) <- c("Year", treeList)
-      
-      ####Portfolio#######################################
-      returns <- output
-      rownames(returns) <- returns[,1]
-      returns <- returns[,-1]
-      ###only include species with mean return > 1 in portfolio
-      use <- colnames(returns)[colMeans(returns) > 1] ###should probably be higher
-      returns <- returns[,use]
-      sigma2 <- as.data.frame(cor(returns)) ###to create cov mat from returns
-      ####sigma2 <- sigma[use,use] ###to use pre-made cov mat
-      target <- set_target(returns, sigma2) ###find range of efficient frontier
-      
-      temp <- boundDat[boundDat$Spp %in% colnames(returns),]
-      ef <- ef_weights(returns, sigma2, target,0,1,0.1) ###change to "mean" for maximising return - main python function
-      #maxSharpe <- max_sharpe_ratio(returns, sigma2,0)
-      ef_w <- ef[[1]]
-      
-      ###add in spp not used
-      notUse <- setdiff(Trees, colnames(ef_w))
-      temp <- as.data.frame(matrix(data = 0, nrow = length(target), ncol = length(notUse)))
-      colnames(temp) <- notUse
-      ##ef_w <- rbind(ef_w, maxSharpe)
-      ef_w <- cbind(ef_w, temp)
-      ef_w$Sd <- c(ef[[2]])
-      ef_w$Return <- rescale(target, to = c(0,1))
-      ef_w <- ef_w[,c(Trees, "Sd","Return")]
-      
-      # ##to plot individual portfolios
-      # #############################################
-      # efAll <- ef_w[ef_w$Return != "mSharpe",]
-      # efAll$Sd <- efAll$Sd/max(efAll$Sd)
-      # efAll$Return <- as.numeric(efAll$Return)
-      # efAll <- melt(efAll, id.vars = "Return")
-      # print(ggplot(efAll[efAll$variable != "Sd",])+
-      #   geom_bar(aes(x = Return, y = value, fill = variable),size = 0.00001, col = "black", stat = "identity")+
-      #   colScale +
-      #   geom_line(data = efAll[efAll$variable == "Sd",], aes(x = Return, y = value))+
-      #   #theme(legend.position = "none")+
-      #   xlab("Volatility"))
-      # ############################################
-      ef_w$It <- w
-      
-      sigmaOut <- sigma2
-      sigmaOut$Row <- rownames(sigmaOut)
-      sigmaOut <- melt(sigmaOut)
-      colnames(sigmaOut)[2] <- "Column"
-      sigmaOut$It <- 4
-      list(frontier = ef_w, sim = growthSim, sig = sigmaOut)
-    }
-    
-    eff_front2 <- melt(eff_front[['frontier']], id.vars = c("Return","It"))
-    eff_front2 <- dcast(eff_front2, Return ~ variable, fun.aggregate = mean)
-    eff_front2$SiteNo <- SNum
-    growthSim <- eff_front$sim
-    growthSim$SiteNo <- SNum
-    sigmaOut <- eff_front$sig
-    sigmaOut$SiteNo <- SNum
-    list(frontier = eff_front2, sim = growthSim, sig = sigmaOut)
-}
+                         SSPred <- SSPredAll[SSPredAll$SiteNo == SNum,] ###subset
+                         
+                         ##Merge SIBEC data
+                         SIBEC <- SIBEC[SIBEC$TreeSpp %in% Trees,]
+                         SSPred <- SSPred[,c(6,3,4)]
+                         SSPred <- merge(SSPred, SIBEC, by = "SS_NoSpace", all.x = TRUE)
+                         
+                         ###Add rows for species with missing SI - usually don't need this but safer to keep in
+                         add <- foreach(Year = unique(SSPred$FuturePeriod), .combine = rbind) %do%{
+                           byYear <- SSPred[SSPred$FuturePeriod == Year,]
+                           foreach(SS = unique(byYear$SS_NoSpace), .combine = rbind) %do%{
+                             bySS <- byYear[byYear$SS_NoSpace == SS,]
+                             missing <- Trees[!Trees %in% bySS$TreeSpp]
+                             new <- bySS[rep(1,length(missing)),]
+                             new$TreeSpp <- missing
+                             new
+                           }
+                         }
+                         if(nrow(add) > 0){
+                           add$MeanPlotSiteIndex <- 5 ##Set missing SI
+                           SSPred <- rbind(SSPred, add)
+                         }
+                         SSPred <- SSPred[!is.na(SSPred$TreeSpp),]
+                         colnames(SSPred)[4] <- "Spp"
+                         
+                         ##Add suitability
+                         SSPred <- merge(SSPred, SuitTable, by = c("SS_NoSpace","Spp"), all.x = TRUE)
+                         SSPred$Suitability[is.na(SSPred$Suitability)] <- 5
+                         
+                         ###Create current data
+                         current <- SIBEC[SIBEC$SS_NoSpace == selectBGC,] %>% 
+                           merge(SuitTable, by.x = c("TreeSpp","SS_NoSpace"), by.y = c("Spp","SS_NoSpace"), all.x = TRUE) %>%
+                           unique()
+                         
+                         ###check that there aren't errors in the table
+                         temp <- aggregate(SS_NoSpace ~ TreeSpp, current, FUN = length)
+                         if(any(temp$SS_NoSpace > 1)){
+                           stop("There are partial duplicates in the suitablity table. Please fix them. :)")
+                         }
+                         
+                         current[is.na(current)] <- 5
+                         current[current == 0] <- 10
+                         current <- data.frame(Spp = current$TreeSpp, FuturePeriod = 2000, MeanSI = current$MeanPlotSiteIndex, MeanSuit = current$Suitability)
+                         
+                         missing <- Trees[!Trees %in% current$Spp]
+                         if(length(missing) > 0){
+                           new <- current[rep(1,length(missing)),]
+                           new$Spp <- missing
+                           new$MeanSI <- 10
+                           new$MeanSuit <- 5
+                           current <- rbind(current, new)
+                         }
+                         
+                         ##Summarise data- average SI and Suit weighted by SSProb
+                         SS.sum <- SSPred %>%
+                           group_by(Spp, FuturePeriod) %>%
+                           summarise(MeanSI = sum(MeanPlotSiteIndex*(SSprob/sum(SSprob))), MeanSuit = round(sum(Suitability*(SSprob/sum(SSprob))), digits = 0))
+                         
+                         SS.sum <- as.data.frame(SS.sum) %>% 
+                           rbind(current)
+                         SS.sum$MeanSI[SS.sum$MeanSuit == 4] <- 5
+                         SS.sum$MeanSI[SS.sum$MeanSuit == 5] <- 0
+                         SS.sum$MeanSuit[SS.sum$MeanSuit == 5] <- 4
+                         SS.sum <- unique(SS.sum)
+                         SS.sum <- SS.sum[order(SS.sum$Spp,SS.sum$FuturePeriod),]
+                         
+                         cols <- rainbow(length(treeList))
+                         annualDat <- data.frame("Year" = seq(2000,2100,1))
+                         
+                         plot(0,0, type = "n", xlim = c(1,100), ylim = c(0,3000), xlab = "Year", ylab = "Volume")###plot
+                         
+                         eff_front <- foreach(w = 1, .combine = combineList) %do% { ##number of iterations
+                           output <- data.frame("year" = annualDat$Year)
+                           growthSim <- data.frame(Spp = character(), Year = numeric(), Returns = numeric())
+                           
+                           for (k in 1:nSpp){ ##for each tree
+                             
+                             DatSpp <- SS.sum[SS.sum$Spp == treeList[k],]
+                             SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.5,0.5,1,4), 
+                                                    "NoMort" = c(70,60,50,30)) ####ProbDead- out of 100 trees, how many will die each year at each suitability. NoMort- Percent of time no mortality
+                             dat <- data.frame("Period" = c(2000,2025,2055,2085), "SIBEC" = DatSpp$MeanSI, "Suit" = DatSpp$MeanSuit)
+                             dat$SIBEC <- dat$SIBEC/50 ##for mean annual increment
+                             dat <- merge(dat, SuitProb, by = "Suit")
+                             s <- approx(dat$Period, dat$SIBEC, n = 101) ##Smooth SI
+                             p <- approx(dat$Period, dat$ProbDead, n = 101) ###Smooth Prob Dead
+                             m <- approx(dat$Period, dat$NoMort, n = 101) ##Smooth No Mort
+                             
+                             ###data frame of annual data
+                             annualDat <- data.frame("Year" = seq(2000,2100,1), "Growth" = s[["y"]], "MeanDead" = p[["y"]], "NoMort" = m[["y"]]) ##create working data
+                             
+                             Returns <- simGrowthCpp(DF = annualDat)
+                             lines(Returns, type = 'l', col = cols[k])##plot
+                             tmpR <- c(0,Returns)
+                             assets <- Returns - tmpR[-length(tmpR)]
+                             temp <- data.frame(Spp = rep(treeList[k],101), Year = 1:101, Returns = Returns)
+                             growthSim <- rbind(growthSim, temp)
+                             output <- cbind(output, assets)
+                           } ## for each tree species
+                           
+                           legend("topleft", treeList, col = cols, pch = 15)
+                           
+                           colnames(output) <- c("Year", treeList)
+                           
+                           ####Portfolio#######################################
+                           returns <- output
+                           rownames(returns) <- returns[,1]
+                           returns <- returns[,-1]
+                           ###only include species with mean return > 1 in portfolio
+                           use <- colnames(returns)[colMeans(returns) > 1] ###should probably be higher
+                           returns <- returns[,use]
+                           sigma2 <- as.data.frame(cor(returns)) ###to create cov mat from returns
+                           ####sigma2 <- sigma[use,use] ###to use pre-made cov mat
+                           target <- set_target(returns, sigma2) ###find range of efficient frontier
+                           
+                           temp <- boundDat[boundDat$Spp %in% colnames(returns),]
+                           ef <- ef_weights(returns, sigma2, target,0,1,0.1) ###change to "mean" for maximising return - main python function
+                           #maxSharpe <- max_sharpe_ratio(returns, sigma2,0)
+                           ef_w <- ef[[1]]
+                           
+                           ###add in spp not used
+                           notUse <- setdiff(Trees, colnames(ef_w))
+                           temp <- as.data.frame(matrix(data = 0, nrow = length(target), ncol = length(notUse)))
+                           colnames(temp) <- notUse
+                           ##ef_w <- rbind(ef_w, maxSharpe)
+                           ef_w <- cbind(ef_w, temp)
+                           ef_w$Sd <- c(ef[[2]])
+                           ef_w$Return <- rescale(target, to = c(0,1))
+                           ef_w <- ef_w[,c(Trees, "Sd","Return")]
+                           
+                           # ##to plot individual portfolios
+                           # #############################################
+                           # efAll <- ef_w[ef_w$Return != "mSharpe",]
+                           # efAll$Sd <- efAll$Sd/max(efAll$Sd)
+                           # efAll$Return <- as.numeric(efAll$Return)
+                           # efAll <- melt(efAll, id.vars = "Return")
+                           # print(ggplot(efAll[efAll$variable != "Sd",])+
+                           #   geom_bar(aes(x = Return, y = value, fill = variable),size = 0.00001, col = "black", stat = "identity")+
+                           #   colScale +
+                           #   geom_line(data = efAll[efAll$variable == "Sd",], aes(x = Return, y = value))+
+                           #   #theme(legend.position = "none")+
+                           #   xlab("Volatility"))
+                           # ############################################
+                           ef_w$It <- w
+                           
+                           sigmaOut <- sigma2
+                           sigmaOut$Row <- rownames(sigmaOut)
+                           sigmaOut <- melt(sigmaOut)
+                           colnames(sigmaOut)[2] <- "Column"
+                           sigmaOut$It <- 4
+                           list(frontier = ef_w, sim = growthSim, sig = sigmaOut)
+                         }
+                         
+                         eff_front2 <- melt(eff_front[['frontier']], id.vars = c("Return","It"))
+                         eff_front2 <- dcast(eff_front2, Return ~ variable, fun.aggregate = mean)
+                         eff_front2$SiteNo <- SNum
+                         growthSim <- eff_front$sim
+                         growthSim$SiteNo <- SNum
+                         sigmaOut <- eff_front$sig
+                         sigmaOut$SiteNo <- SNum
+                         list(frontier = eff_front2, sim = growthSim, sig = sigmaOut)
+                       }
 
 ###The optimisation works much better with set returns and optimising stdev - the opposite of what we're plotting
 ###We have to therefore round Sd values so that they're not unequally spaced when we combine and average
@@ -423,119 +419,119 @@ registerDoParallel(cl, cores = coreNum)
 
 ###foreach spp - not yet working with all species, do each species individually
 ##allSitesSpp <- foreach(Spp = Trees, .combine = combineList) %do% {
-  Spp = "Pli"
-  SuitTable <- allSppDat[allSppDat$Spp == Spp,]
-  SuitTable <- SuitTable[,-4]
+Spp = "Pli"
+SuitTable <- allSppDat[allSppDat$Spp == Spp,]
+SuitTable <- SuitTable[,-4]
+
+allSites <- foreach(SNum = SiteList[1:10], .combine = rbind, .packages = c("reshape2","reticulate")) %do% {
+  cat("Site",SNum,"\n")
+  ##reticulate::source_python("PythonFns/PortfolioOptimisation.py")
+  SSPred <- SSPredAll[SSPredAll$SiteNo == SNum,]
+  currBGC <- as.character(SSPred$BGC[1])
   
-  allSites <- foreach(SNum = SiteList[1:10], .combine = rbind, .packages = c("reshape2","reticulate")) %do% {
-    cat("Site",SNum,"\n")
-    ##reticulate::source_python("PythonFns/PortfolioOptimisation.py")
-    SSPred <- SSPredAll[SSPredAll$SiteNo == SNum,]
-    currBGC <- as.character(SSPred$BGC[1])
+  SSPred <- merge(SSPred,SuitTable, by.x = "BGC.pred", by.y = "Site", all.x = TRUE)
+  
+  modList <- as.character(unique(SSPred$GCM))
+  output <- data.frame(Return = numeric(), variable = character(), value = numeric(), Model = character())
+  temp <- unique(SSPred$Seed)
+  ##output <- data.frame(Sd = rep(seq(0.2,1,by = 0.1), length(temp)), Seed = rep(temp, each = 9))
+  ##output <- data.frame(Sd = numeric(), Seed = character())
+  #graphList <- list()
+  
+  for(mod in modList){
+    cat("Model",mod,"\n")
+    SSPredMod <- SSPred[SSPred$GCM == mod,]
+    if(any(is.na(SSPredMod$Seed))){next}
+    SeedList <- unique(SSPredMod$Seed)
+    returns <- data.frame(Year = seq(2000,2000+modelYears,1))
+    modData <- data.frame(Seed = character(), Year = numeric(), Returns = numeric())
     
-    SSPred <- merge(SSPred,SuitTable, by.x = "BGC.pred", by.y = "Site", all.x = TRUE)
-    
-    modList <- as.character(unique(SSPred$GCM))
-    output <- data.frame(Return = numeric(), variable = character(), value = numeric(), Model = character())
-    temp <- unique(SSPred$Seed)
-    ##output <- data.frame(Sd = rep(seq(0.2,1,by = 0.1), length(temp)), Seed = rep(temp, each = 9))
-    ##output <- data.frame(Sd = numeric(), Seed = character())
-    #graphList <- list()
-    
-    for(mod in modList){
-      cat("Model",mod,"\n")
-      SSPredMod <- SSPred[SSPred$GCM == mod,]
-      if(any(is.na(SSPredMod$Seed))){next}
-      SeedList <- unique(SSPredMod$Seed)
-      returns <- data.frame(Year = seq(2000,2000+modelYears,1))
-      modData <- data.frame(Seed = character(), Year = numeric(), Returns = numeric())
+    for(seed in SeedList){
+      SSPredSd <- SSPredMod[SSPredMod$Seed == seed,]
+      SSPredSd <- SSPredSd[order(SSPredSd$GCM,SSPredSd$FuturePeriod),]
+      SS.sum <- SSPredSd[,c("FuturePeriod","Height")]
+      curr <- data.frame(FuturePeriod = 2000, 
+                         Height = SuitTable$Height[SuitTable$Site == BGC & SuitTable$Seed == as.character(seed)])
+      SS.sum <- rbind(curr, SS.sum)
+      SS.sum$Height <- gs2gw(SS.sum$Height, as.numeric(params[1]), as.numeric(params[2]))
+      ##SS.sum[SS.sum < 0.005] <- -1
+      SS.sum <- SS.sum[complete.cases(SS.sum),]
       
-      for(seed in SeedList){
-        SSPredSd <- SSPredMod[SSPredMod$Seed == seed,]
-        SSPredSd <- SSPredSd[order(SSPredSd$GCM,SSPredSd$FuturePeriod),]
-        SS.sum <- SSPredSd[,c("FuturePeriod","Height")]
-        curr <- data.frame(FuturePeriod = 2000, 
-                           Height = SuitTable$Height[SuitTable$Site == BGC & SuitTable$Seed == as.character(seed)])
-        SS.sum <- rbind(curr, SS.sum)
-        SS.sum$Height <- gs2gw(SS.sum$Height, as.numeric(params[1]), as.numeric(params[2]))
-        ##SS.sum[SS.sum < 0.005] <- -1
-        SS.sum <- SS.sum[complete.cases(SS.sum),]
-        
-        Returns <- simulateGrowth(SS.sum$Height, nYears = modelYears)
-        if(is.null(Returns)){next}
-        tmpR <- c(0,Returns)
-        assets <- Returns - tmpR[-length(tmpR)]
-        dat <- data.frame(Seed = rep(seed,modelYears+1), Year = 1:(modelYears+1), Returns = assets)
-        modData <- rbind(modData, dat)
-      }
-      modData <- dcast(modData, Year ~ Seed, value.var = "Returns")
-      returns <- modData
-      rownames(returns) <- returns[,1]
-      returns <- returns[,-1]
-      sigma2 <- as.data.frame(cor(returns)) ###to create cov mat from returns
-      ##target <- set_target(returns, sigma2) ###find range of efficient frontier
-      target <- seq(0.3,1,by = 0.02)
-      
-      ef <- ef_weights_cbst(returns, sigma2, target, 0, 1, 0.15) ###change to "mean" for maximising return - main python function
-      ef_w <- as.data.frame(ef[[1]])
-      ef_w$Sd <- c(ef[[2]])
-      ###########################################
-      dat <- ef_w
-      dat$Return <- target
-      
-      ##To graph each model separately
-      # dat <- dat[,colMeans(dat) > 0.01]
-      # for(R in unique(dat$Sd)){###scale each out of 1
-      #   dat$value[dat$Sd == R] <- dat$value[dat$Sd == R]/sum(dat$value[dat$Sd == R])
-      # }
-      # graphList[[mod]] <- (ggplot(dat)+
-      #                        geom_area(aes(x = Sd, y = value, fill = variable),size = 0.00001, col = "black", stat = "identity")+
-      #                        ggtitle(mod) +
-      #                        theme(legend.text = element_text(size=8, face="bold")))
-      # 
-      #temp <- data.frame(Sd = seq(0.2,1, by = 0.1))
-      dat$Sd <- round(dat$Sd, digits = 1)
-      dat$Return <- round(dat$Return, digits = 1)
-      ##dat <- melt(dat, id.vars = "Sd") %>% dcast(Sd ~ variable, fun.aggregate = mean)
-      # dat <- merge(temp,dat, by = "Sd", all = T)
-      # dat <- apply(dat,2, repeat.before) %>% as.data.frame()
-      # dat[is.na(dat)] <- 0
-      # dat <- melt(dat, id.vars = "Sd")
-      dat <- melt(dat, id.vars = "Return")
-      dat$Model <- mod
-      output <- rbind(output, dat)
-      
-      #######################################################
+      Returns <- simulateGrowth(SS.sum$Height, nYears = modelYears)
+      if(is.null(Returns)){next}
+      tmpR <- c(0,Returns)
+      assets <- Returns - tmpR[-length(tmpR)]
+      dat <- data.frame(Seed = rep(seed,modelYears+1), Year = 1:(modelYears+1), Returns = assets)
+      modData <- rbind(modData, dat)
     }
-    output$SiteNo <- SNum
-    output
-  } 
-  #allSites <- allSites[complete.cases(allSites),]
-  dat <- output
-  dat <- dat[!is.nan(dat$value),]
-  dat <- dcast(dat, Return ~ variable, fun.aggregate = mean, na.rm = T)
-  dat <- dat[,colMeans(dat, na.rm = T) > 0.2]
-  #dat <- apply(dat, 2, repeat.before) %>% as.data.frame()
-  #dat <- dat[13:72,]
-  datRet <- melt(dat, id.vars = "Return")
-  datRet <- datRet[datRet$variable != "Sd",]
-  for(R in unique(datRet$Return)){###scale each out of 1
-    datRet$value[datRet$Return == R] <- datRet$value[datRet$Return == R]/sum(datRet$value[datRet$Return == R])
+    modData <- dcast(modData, Year ~ Seed, value.var = "Returns")
+    returns <- modData
+    rownames(returns) <- returns[,1]
+    returns <- returns[,-1]
+    sigma2 <- as.data.frame(cor(returns)) ###to create cov mat from returns
+    ##target <- set_target(returns, sigma2) ###find range of efficient frontier
+    target <- seq(0.3,1,by = 0.02)
+    
+    ef <- ef_weights_cbst(returns, sigma2, target, 0, 1, 0.15) ###change to "mean" for maximising return - main python function
+    ef_w <- as.data.frame(ef[[1]])
+    ef_w$Sd <- c(ef[[2]])
+    ###########################################
+    dat <- ef_w
+    dat$Return <- target
+    
+    ##To graph each model separately
+    # dat <- dat[,colMeans(dat) > 0.01]
+    # for(R in unique(dat$Sd)){###scale each out of 1
+    #   dat$value[dat$Sd == R] <- dat$value[dat$Sd == R]/sum(dat$value[dat$Sd == R])
+    # }
+    # graphList[[mod]] <- (ggplot(dat)+
+    #                        geom_area(aes(x = Sd, y = value, fill = variable),size = 0.00001, col = "black", stat = "identity")+
+    #                        ggtitle(mod) +
+    #                        theme(legend.text = element_text(size=8, face="bold")))
+    # 
+    #temp <- data.frame(Sd = seq(0.2,1, by = 0.1))
+    dat$Sd <- round(dat$Sd, digits = 1)
+    dat$Return <- round(dat$Return, digits = 1)
+    ##dat <- melt(dat, id.vars = "Sd") %>% dcast(Sd ~ variable, fun.aggregate = mean)
+    # dat <- merge(temp,dat, by = "Sd", all = T)
+    # dat <- apply(dat,2, repeat.before) %>% as.data.frame()
+    # dat[is.na(dat)] <- 0
+    # dat <- melt(dat, id.vars = "Sd")
+    dat <- melt(dat, id.vars = "Return")
+    dat$Model <- mod
+    output <- rbind(output, dat)
+    
+    #######################################################
   }
-  ggplot(datRet)+
-    geom_area(aes(x = Return, y = value, fill = variable),size = 0.00001, col = "black", stat = "identity")+
-    ggtitle("CBST by Return")
-  
-  dat <- melt(dat, id.vars = "Sd")
-  dat <- dat[dat$variable != "Return",]
-  for(R in unique(dat$Sd)){###scale each out of 1
-    dat$value[dat$Sd == R] <- dat$value[dat$Sd == R]/sum(dat$value[dat$Sd == R])
-  }
-  ggplot(dat)+
-    geom_area(aes(x = Sd, y = value, fill = variable),size = 0.00001, col = "black", stat = "identity")+
-    scale_x_reverse(limits = c(1,0.6))+
-    ggtitle("CBST by Volatility")
-  
+  output$SiteNo <- SNum
+  output
+} 
+#allSites <- allSites[complete.cases(allSites),]
+dat <- output
+dat <- dat[!is.nan(dat$value),]
+dat <- dcast(dat, Return ~ variable, fun.aggregate = mean, na.rm = T)
+dat <- dat[,colMeans(dat, na.rm = T) > 0.2]
+#dat <- apply(dat, 2, repeat.before) %>% as.data.frame()
+#dat <- dat[13:72,]
+datRet <- melt(dat, id.vars = "Return")
+datRet <- datRet[datRet$variable != "Sd",]
+for(R in unique(datRet$Return)){###scale each out of 1
+  datRet$value[datRet$Return == R] <- datRet$value[datRet$Return == R]/sum(datRet$value[datRet$Return == R])
+}
+ggplot(datRet)+
+  geom_area(aes(x = Return, y = value, fill = variable),size = 0.00001, col = "black", stat = "identity")+
+  ggtitle("CBST by Return")
+
+dat <- melt(dat, id.vars = "Sd")
+dat <- dat[dat$variable != "Return",]
+for(R in unique(dat$Sd)){###scale each out of 1
+  dat$value[dat$Sd == R] <- dat$value[dat$Sd == R]/sum(dat$value[dat$Sd == R])
+}
+ggplot(dat)+
+  geom_area(aes(x = Sd, y = value, fill = variable),size = 0.00001, col = "black", stat = "identity")+
+  scale_x_reverse(limits = c(1,0.6))+
+  ggtitle("CBST by Volatility")
+
 #}
 
 ########################OLD CODE#################################
