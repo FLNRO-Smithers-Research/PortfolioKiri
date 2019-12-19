@@ -29,6 +29,29 @@ NumericVector simGrowthCpp(DataFrame DF){
 }
 
 // [[Rcpp::export]]
+NumericVector simGrowthCBST(DataFrame DF){
+  int nTrees = 100;
+  NumericVector Growth = DF["Growth"]; //convert to vectors
+  NumericVector NoMort  = DF["NoMort"];
+  NumericVector MeanDead = DF["MeanDead"];
+  int numYears = Growth.length();
+  NumericVector Returns(numYears);
+  double height, percentDead;
+  int prevTrees, numDead, i;
+  for(i = 0; i < numYears; i++){
+    height = sum(Growth[Rcpp::Range(0,i)]);
+    Returns[i] = nTrees*height;
+    if(Rcpp::runif(1,0,100)[0] > NoMort[i]){
+      prevTrees = nTrees;
+      percentDead = Rcpp::rgamma(1, 1, MeanDead[i]/100)[0];
+      numDead = (percentDead/100)*prevTrees;
+      nTrees = prevTrees - numDead;
+    }
+  }
+  return(Returns);
+}
+
+// [[Rcpp::export]]
 NumericVector gs2gw(NumericVector x, double a, double b){
   int len = x.length();
   NumericVector out(len);

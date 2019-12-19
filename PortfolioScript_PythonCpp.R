@@ -6,9 +6,6 @@
 require(tcltk)
 require(dplyr)
 require(ggplot2)
-require(PortfolioAnalytics)
-require(ROI.plugin.quadprog)
-require(ROI)
 require(MASS)
 require(magrittr)
 require(foreach)
@@ -348,10 +345,8 @@ ggplot(simGrowth, aes(x = as.numeric(Year), y = value, colour = variable, group 
 sig <- allSitesSpp$sig
 sig <- dcast(sig, Row ~ Column, value.var = "value", fun.aggregate = mean)
 ################################################################################################
-
-####CBST Portfolio#############
-library(tidyr)
-library(scales)
+####CBST Portfolio############
+################################################################################################
 
 ####function to calculate parameters for gs2gw function given cutoff (default 0.9)
 ###for CBST Portfolio
@@ -368,8 +363,8 @@ y <- gs2gw(x, params[1], params[2])
 plot(x,y, type = "l")
 #####################################
 
-modelYears <- 40
-modPeriod <- 2025 ##c(2025,2055, 2085)
+modelYears <- 80
+modPeriod <- c(2025,2055, 2085)
 
 ###read in CBST data
 setwd("./CBSTPortfolio")
@@ -387,13 +382,14 @@ colnames(allSppDat) <- c("Site","Seed","Height", "Spp")
 
 ##import BGC prediction by model
 SSPredAll <- read.csv(file.choose())##import BGC predictions from CCISS script
-BGC <- "SBSmc2" ###select BGC
+BGC <- "IDFdk3" ###select BGC
 # SSPredAll <- separate(SSPredAll, GCM, c("GCM","Scenario"), sep = "_")
 # SSPredAll$GCM <- paste(SSPredAll$GCM, SSPredAll$Scenario, sep = "-")
 # SSPredAll <- SSPredAll[,-2]
 SSPredAll <- SSPredAll[SSPredAll$BGC == BGC,]
-SSPredAll <- SSPredAll[SSPredAll$FuturePeriod == modPeriod,]
-SiteList <- unique(SSPredAll$SiteNo)
+SSPredAll <- SSPredAll[grep("Ele",SSPredAll$SiteNo),]
+SSPredAll <- SSPredAll[SSPredAll$FuturePeriod %in% modPeriod,]
+
 # SSPredAll <- SSPredAll[SSPredAll$SiteNo %in% SiteList,]
 
 
@@ -408,7 +404,7 @@ simulateGrowth <- function(x, nYears = modYears){
     
     annualDat <- data.frame("Year" = seq(2000,2000+nYears,1), "Growth" = growthRate, "MeanDead" = pDead, "NoMort" = rep(25, nYears+1)) ##create working data
     
-    Returns <- simGrowthCpp(DF = annualDat)
+    Returns <- simGrowthCBST(DF = annualDat)
     
     return(Returns)
   }
@@ -426,8 +422,11 @@ registerDoParallel(cl, cores = coreNum)
   Spp = "Pli"
   SuitTable <- allSppDat[allSppDat$Spp == Spp,]
   SuitTable <- SuitTable[,-4]
+  SSPredAll$SiteNo <- as.character(SSPredAll$SiteNo)
+  SSPredAll <- SSPredAll[order(SSPredAll$SiteNo,SSPredAll$GCM),]
+  SiteList <- unique(SSPredAll$SiteNo)
   
-  allSites <- foreach(SNum = SiteList[1:10], .combine = rbind, .packages = c("reshape2","reticulate")) %do% {
+  allSites <- foreach(SNum = SiteList[1:3], .combine = rbind, .packages = c("reshape2","reticulate")) %do% {
     cat("Site",SNum,"\n")
     ##reticulate::source_python("PythonFns/PortfolioOptimisation.py")
     SSPred <- SSPredAll[SSPredAll$SiteNo == SNum,]
@@ -438,9 +437,8 @@ registerDoParallel(cl, cores = coreNum)
     modList <- as.character(unique(SSPred$GCM))
     output <- data.frame(Return = numeric(), variable = character(), value = numeric(), Model = character())
     temp <- unique(SSPred$Seed)
-    ##output <- data.frame(Sd = rep(seq(0.2,1,by = 0.1), length(temp)), Seed = rep(temp, each = 9))
-    ##output <- data.frame(Sd = numeric(), Seed = character())
-    #graphList <- list()
+    modList <- modList[grep("rcp85",modList)][1:12]
+    grList <- list()
     
     for(mod in modList){
       cat("Model",mod,"\n")
@@ -474,7 +472,7 @@ registerDoParallel(cl, cores = coreNum)
       returns <- returns[,-1]
       sigma2 <- as.data.frame(cor(returns)) ###to create cov mat from returns
       ##target <- set_target(returns, sigma2) ###find range of efficient frontier
-      target <- seq(0.3,1,by = 0.02)
+      target <- seq(0.3,0.9,by = 0.02)
       
       ef <- ef_weights_cbst(returns, sigma2, target, 0, 1, 0.15) ###change to "mean" for maximising return - main python function
       ef_w <- as.data.frame(ef[[1]])
@@ -483,19 +481,20 @@ registerDoParallel(cl, cores = coreNum)
       dat <- ef_w
       dat$Return <- target
       
-      ##To graph each model separately
-      # dat <- dat[,colMeans(dat) > 0.01]
-      # for(R in unique(dat$Sd)){###scale each out of 1
-      #   dat$value[dat$Sd == R] <- dat$value[dat$Sd == R]/sum(dat$value[dat$Sd == R])
-      # }
-      # graphList[[mod]] <- (ggplot(dat)+
-      #                        geom_area(aes(x = Sd, y = value, fill = variable),size = 0.00001, col = "black", stat = "identity")+
-      #                        ggtitle(mod) +
-      #                        theme(legend.text = element_text(size=8, face="bold")))
-      # 
-      #temp <- data.frame(Sd = seq(0.2,1, by = 0.1))
-      dat$Sd <- round(dat$Sd, digits = 1)
-      dat$Return <- round(dat$Return, digits = 1)
+      #####graph individual model############
+      datRet <- melt(dat, id.vars = "Sd")
+      datRet <- datRet[datRet$variable != "Return",]
+      datRet$Sd <- round(datRet$Sd, digits = 2)
+      datRet <- dcast(datRet, Sd ~ variable, fun.aggregate = mean) %>% melt(id.vars = "Sd")
+      for(R in unique(datRet$Sd)){###scale each out of 1
+        datRet$value[datRet$Sd == R] <- datRet$value[datRet$Sd == R]/sum(datRet$value[datRet$Sd == R])
+      }
+      grList[[mod]] <- (ggplot(datRet)+
+        geom_area(aes(x = Sd, y = value, fill = variable),size = 0.00001, col = "black", stat = "identity")+
+        ggtitle(mod))
+      #####
+      
+      dat$Sd <- round(dat$Sd, digits = 2)
       ##dat <- melt(dat, id.vars = "Sd") %>% dcast(Sd ~ variable, fun.aggregate = mean)
       # dat <- merge(temp,dat, by = "Sd", all = T)
       # dat <- apply(dat,2, repeat.before) %>% as.data.frame()
@@ -510,13 +509,21 @@ registerDoParallel(cl, cores = coreNum)
     output$SiteNo <- SNum
     output
   } 
+  
+  layoutMat <- rbind(c(1,2,3),
+                     c(4,5,6),
+                     c(7,8,9),
+                     c(10,11,12))
+  
+  grid.arrange(grobs = grList, layout_matrix = layoutMat)
+  
   #allSites <- allSites[complete.cases(allSites),]
   dat <- output
   dat <- dat[!is.nan(dat$value),]
-  dat <- dcast(dat, Return ~ variable, fun.aggregate = mean, na.rm = T)
-  dat <- dat[,colMeans(dat, na.rm = T) > 0.2]
-  #dat <- apply(dat, 2, repeat.before) %>% as.data.frame()
-  #dat <- dat[13:72,]
+  dat <- dcast(dat, Return ~ variable, fun.aggregate = function(x){sum(x)/length(modList)})
+  dat <- dat[,colMeans(dat, na.rm = T) > 0.01]
+  dat$Sd <- round(dat$Sd,digits = 1)
+
   datRet <- melt(dat, id.vars = "Return")
   datRet <- datRet[datRet$variable != "Sd",]
   for(R in unique(datRet$Return)){###scale each out of 1
@@ -526,6 +533,7 @@ registerDoParallel(cl, cores = coreNum)
     geom_area(aes(x = Return, y = value, fill = variable),size = 0.00001, col = "black", stat = "identity")+
     ggtitle("CBST by Return")
   
+  dat <- melt(dat, id.vars = "Sd") %>% dcast(Sd ~ variable, fun.aggregate = mean)
   dat <- melt(dat, id.vars = "Sd")
   dat <- dat[dat$variable != "Return",]
   for(R in unique(dat$Sd)){###scale each out of 1
@@ -533,7 +541,7 @@ registerDoParallel(cl, cores = coreNum)
   }
   ggplot(dat)+
     geom_area(aes(x = Sd, y = value, fill = variable),size = 0.00001, col = "black", stat = "identity")+
-    scale_x_reverse(limits = c(1,0.6))+
+    scale_x_reverse()+
     ggtitle("CBST by Volatility")
   
 #}
