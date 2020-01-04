@@ -25,6 +25,7 @@ rm(list=ls())
 setwd("C:/Users/kirid/Desktop/PortfolioKiri")
 #setwd(tk_choose.dir())
 sourceCpp("CppFunctions/SimGrowth.cpp")
+#py_install("scipy")
 source_python("PythonFns/PortfolioOptimisation.py") ###make sure you have python as a path variable - easiest way is to install Anaconda
 
 ###OPTIONAL: Set up to run loops in parallel###
@@ -363,8 +364,8 @@ y <- gs2gw(x, params[1], params[2])
 plot(x,y, type = "l")
 #####################################
 
-modelYears <- 80
-modPeriod <- c(2025,2055, 2085)
+modelYears <- 60
+modPeriod <- c(2025,2055)
 
 ###read in CBST data
 setwd("./CBSTPortfolio")
@@ -393,30 +394,6 @@ SSPredAll <- SSPredAll[SSPredAll$FuturePeriod %in% modPeriod,]
 # SSPredAll <- SSPredAll[SSPredAll$SiteNo %in% SiteList,]
 
 
-
-simulateGrowth <- function(x, nYears = modYears){
-  if(any(x < 0) || max(x) < 0.4){return(NULL)}
-  else{
-    s <- spline(c(2000,modPeriod), x, n = nYears+1)
-    growthRate <- s[["y"]]
-    pDead <- 1 - s[["y"]]
-    pDead <- rescale(pDead, to = c(0.01,0.1), from = c(0,1)) %>% multiply_by(100)
-    
-    annualDat <- data.frame("Year" = seq(2000,2000+nYears,1), "Growth" = growthRate, "MeanDead" = pDead, "NoMort" = rep(25, nYears+1)) ##create working data
-    
-    Returns <- simGrowthCBST(DF = annualDat)
-    
-    return(Returns)
-  }
-  
-}
-
-require(doParallel)
-set.seed(123321)
-coreNum <- as.numeric(detectCores()-2)
-cl <- makeCluster(coreNum)
-registerDoParallel(cl, cores = coreNum)
-
 ###foreach spp - not yet working with all species, do each species individually
 ##allSitesSpp <- foreach(Spp = Trees, .combine = combineList) %do% {
   Spp = "Pli"
@@ -426,9 +403,41 @@ registerDoParallel(cl, cores = coreNum)
   SSPredAll <- SSPredAll[order(SSPredAll$SiteNo,SSPredAll$GCM),]
   SiteList <- unique(SSPredAll$SiteNo)
   
-  allSites <- foreach(SNum = SiteList[1:3], .combine = rbind, .packages = c("reshape2","reticulate")) %do% {
-    cat("Site",SNum,"\n")
-    ##reticulate::source_python("PythonFns/PortfolioOptimisation.py")
+  simulateGrowth <- function(x, nYears = modYears){ ###remove any not suitable in any time period
+    if(any(x < 0) || max(x) < 0.5){return(NULL)}
+    else{
+      s <- spline(c(2000,modPeriod), x, n = nYears+1)
+      growthRate <- s[["y"]]
+      pDead <- 1 - s[["y"]]
+      pDead <- rescale(pDead, to = c(0.01,0.1), from = c(0,1)) %>% multiply_by(100)
+      
+      annualDat <- data.frame("Year" = seq(2000,2000+nYears,1), "Growth" = growthRate, "MeanDead" = pDead, "NoMort" = rep(25, nYears+1)) ##create working data
+      
+      Returns <- simGrowthCBST(DF = annualDat)
+      
+      return(Returns)
+    }
+    
+  }
+  
+  worker.init <- function(){
+    Rcpp::sourceCpp("../CppFunctions/SimGrowth.cpp")
+    reticulate::source_python("../PythonFns/PortfolioOptimisation.py")
+  }
+  
+  
+  
+  require(doParallel)
+  cl <- makePSOCKcluster(detectCores()-2)
+  clusterCall(cl, worker.init)
+  registerDoParallel(cl)
+  
+  allSites <- foreach(SNum = SiteList, .combine = rbind, .packages = c("reshape2","Rcpp","magrittr","scales","reticulate"), .noexport = 
+                        c("gs2gw", "simGrowthCBST","simGrowthCpp")) %dopar% {
+    
+    #Rcpp::sourceCpp("../CppFunctions/SimGrowth.cpp")
+    reticulate::source_python("../PythonFns/PortfolioOptimisation.py")
+    
     SSPred <- SSPredAll[SSPredAll$SiteNo == SNum,]
     currBGC <- as.character(SSPred$BGC[1])
     
@@ -437,7 +446,7 @@ registerDoParallel(cl, cores = coreNum)
     modList <- as.character(unique(SSPred$GCM))
     output <- data.frame(Return = numeric(), variable = character(), value = numeric(), Model = character())
     temp <- unique(SSPred$Seed)
-    modList <- modList[grep("rcp85",modList)][1:12]
+    modList <- modList[grep("rcp85",modList)] ##select just rcp8.5 models
     grList <- list()
     
     for(mod in modList){
@@ -482,16 +491,17 @@ registerDoParallel(cl, cores = coreNum)
       dat$Return <- target
       
       #####graph individual model############
-      datRet <- melt(dat, id.vars = "Sd")
-      datRet <- datRet[datRet$variable != "Return",]
-      datRet$Sd <- round(datRet$Sd, digits = 2)
-      datRet <- dcast(datRet, Sd ~ variable, fun.aggregate = mean) %>% melt(id.vars = "Sd")
-      for(R in unique(datRet$Sd)){###scale each out of 1
-        datRet$value[datRet$Sd == R] <- datRet$value[datRet$Sd == R]/sum(datRet$value[datRet$Sd == R])
-      }
-      grList[[mod]] <- (ggplot(datRet)+
-        geom_area(aes(x = Sd, y = value, fill = variable),size = 0.00001, col = "black", stat = "identity")+
-        ggtitle(mod))
+      # datRet <- melt(dat, id.vars = "Sd")
+      # datRet <- datRet[datRet$variable != "Return",]
+      # datRet$Sd <- round(datRet$Sd, digits = 2)
+      # datRet <- dcast(datRet, Sd ~ variable, fun.aggregate = mean) %>% melt(id.vars = "Sd")
+      # for(R in unique(datRet$Sd)){###scale each out of 1
+      #   datRet$value[datRet$Sd == R] <- datRet$value[datRet$Sd == R]/sum(datRet$value[datRet$Sd == R])
+      # }
+      # grList[[mod]] <- (ggplot(datRet)+
+      #   geom_area(aes(x = Sd, y = value, fill = variable),size = 0.00001, col = "black", stat = "identity")+
+      #   scale_x_reverse()+
+      #   ggtitle(mod))
       #####
       
       dat$Sd <- round(dat$Sd, digits = 2)
@@ -517,10 +527,10 @@ registerDoParallel(cl, cores = coreNum)
   
   grid.arrange(grobs = grList, layout_matrix = layoutMat)
   
-  #allSites <- allSites[complete.cases(allSites),]
+  output <- allSites[complete.cases(allSites),]
   dat <- output
   dat <- dat[!is.nan(dat$value),]
-  dat <- dcast(dat, Return ~ variable, fun.aggregate = function(x){sum(x)/length(modList)})
+  dat <- dcast(dat, Return ~ variable, fun.aggregate = function(x){sum(x)/(15*length(SiteList))})
   dat <- dat[,colMeans(dat, na.rm = T) > 0.01]
   dat$Sd <- round(dat$Sd,digits = 1)
 
