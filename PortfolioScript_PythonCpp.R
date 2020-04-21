@@ -261,7 +261,7 @@ allSitesSpp <- foreach(SNum = SList[1:20], .combine = combineList,
 ###The optimisation works much better with set returns and optimising stdev - the opposite of what we're plotting
 ###We have to therefore round Sd values so that they're not unequally spaced when we combine and average
 
-##############################################3
+##############################################
 efAll <- allSitesSpp[['frontier']] ###portfolio output
 efAll$Return <- round(efAll$Return, digits = 2)
 efAll <- efAll[,-length(efAll)]
@@ -393,15 +393,16 @@ SSPredAll <- SSPredAll[SSPredAll$FuturePeriod %in% modPeriod,]
 ###foreach spp - not yet working with all species, do each species individually
 ##allSitesSpp <- foreach(Spp = Trees, .combine = combineList) %do% {
 
-  Spp = "Fdi"
+  Spp = "Sx"
   SuitTable <- allSppDat[allSppDat$Spp == Spp,]
   SuitTable <- SuitTable[,-4]
   SSPredAll$SiteNo <- as.character(SSPredAll$SiteNo)
   SSPredAll <- SSPredAll[order(SSPredAll$SiteNo,SSPredAll$GCM),]
   SiteList <- unique(SSPredAll$SiteNo)
   
+  
   simulateGrowth <- function(x, nYears = modYears){ ###remove any not suitable in any time period
-    if(any(x < 0) || max(x) < 0.5){return(NULL)}
+    if(any(x < 0) || max(x) < 0.6){return(NULL)}
     else{
       s <- spline(c(2000,modPeriod), x, n = nYears+1)
       growthRate <- s[["y"]]
@@ -439,6 +440,7 @@ SSPredAll <- SSPredAll[SSPredAll$FuturePeriod %in% modPeriod,]
     currBGC <- as.character(SSPred$BGC[1])
     
     SSPred <- merge(SSPred,SuitTable, by.x = "BGC.pred", by.y = "Site", all.x = TRUE)
+    ##SSPred <- SSPred[complete.cases(SSPred),]
     
     modList <- as.character(unique(SSPred$GCM))
     output <- data.frame(Return = numeric(), variable = character(), value = numeric(), Model = character())
@@ -478,9 +480,9 @@ SSPredAll <- SSPredAll[SSPredAll$FuturePeriod %in% modPeriod,]
       returns <- returns[,-1]
       sigma2 <- as.data.frame(cor(returns)) ###to create cov mat from returns
       ##target <- set_target(returns, sigma2) ###find range of efficient frontier
-      target <- seq(0.3,0.9,by = 0.02)
+      target <- seq(0.1,0.9,by = 0.02)
       
-      ef <- ef_weights_cbst(returns, sigma2, target, 0, 1, 0.15) ###change to "mean" for maximising return - main python function
+      ef <- ef_weights_cbst(returns, sigma2, target, 0, 1, 0.01) ###change to "mean" for maximising return - main python function
       ef_w <- as.data.frame(ef[[1]])
       ef_w$Sd <- c(ef[[2]])
       ###########################################
@@ -515,18 +517,42 @@ SSPredAll <- SSPredAll[SSPredAll$FuturePeriod %in% modPeriod,]
     output
   } 
   
+
+  grList <- foreach(SNum = SiteList,.combine = c) %do% {
+    dat <- allSites[allSites$SiteNo == SNum,]
+    dat <- dat[!is.nan(dat$value),]
+    dat <- dcast(dat, Return ~ variable, fun.aggregate = function(x){sum(x)/(15)})
+    dat <- dat[,colMeans(dat, na.rm = T) > 0.02]
+    dat$Sd <- round(dat$Sd,digits = 1)
+    dat <- melt(dat, id.vars = "Sd") %>% dcast(Sd ~ variable, fun.aggregate = mean)
+    dat <- melt(dat, id.vars = "Sd")
+    ret <- dat[dat$variable == "Return",]
+    ret$value <- ret$value/max(ret$value)
+    dat <- dat[dat$variable != "Return",]
+    for(R in unique(dat$Sd)){###scale each out of 1
+      dat$value[dat$Sd == R] <- dat$value[dat$Sd == R]/sum(dat$value[dat$Sd == R])
+    }
+    colnames(dat) <- c("Sd","Seed","Proportion")
+    tmp <- list(ggplot(dat)+
+      geom_area(aes(x = Sd, y = Proportion, fill = Seed),size = 0.00001, col = "black", stat = "identity")+
+      geom_line(data = ret, aes(x = Sd, y = value))+
+      scale_x_reverse())
+    tmp
+  }
+  
   layoutMat <- rbind(c(1,2,3),
                      c(4,5,6),
                      c(7,8,9),
-                     c(10,11,12))
+                     c(10,11,12),
+                     c(13,14,15))
   
-  grid.arrange(grobs = grList, layout_matrix = layoutMat)
+  grid.arrange(grobs = grList[1:15], layout_matrix = layoutMat)
   
   output <- allSites[complete.cases(allSites),]
   dat <- output
   dat <- dat[!is.nan(dat$value),]
-  dat <- dcast(dat, Return ~ variable, fun.aggregate = function(x){sum(x)/(15*length(SiteList))})
-  dat <- dat[,colMeans(dat, na.rm = T) > 0.01]
+  dat <- dcast(dat, Return ~ variable, fun.aggregate = function(x){sum(x)/(30*length(SiteList))})
+  dat <- dat[,colMeans(dat, na.rm = T) > 0.02]
   dat$Sd <- round(dat$Sd,digits = 1)
 
   datRet <- melt(dat, id.vars = "Return")
@@ -540,14 +566,18 @@ SSPredAll <- SSPredAll[SSPredAll$FuturePeriod %in% modPeriod,]
   
   dat <- melt(dat, id.vars = "Sd") %>% dcast(Sd ~ variable, fun.aggregate = mean)
   dat <- melt(dat, id.vars = "Sd")
+  ret <- dat[dat$variable == "Return",]
+  ret$value <- ret$value/max(ret$value)
   dat <- dat[dat$variable != "Return",]
   for(R in unique(dat$Sd)){###scale each out of 1
     dat$value[dat$Sd == R] <- dat$value[dat$Sd == R]/sum(dat$value[dat$Sd == R])
   }
+  colnames(dat) <- c("Sd","Seed","Proportion")
   ggplot(dat)+
-    geom_area(aes(x = Sd, y = value, fill = variable),size = 0.00001, col = "black", stat = "identity")+
+    geom_area(aes(x = Sd, y = Proportion, fill = Seed),size = 0.00001, col = "black", stat = "identity")+
+    geom_line(data = ret, aes(x = Sd, y = value))+
     scale_x_reverse()+
-    ggtitle("CBST by Volatility")
+    ggtitle(paste("CBST ",Spp, sep = ""))
 
 #}
 

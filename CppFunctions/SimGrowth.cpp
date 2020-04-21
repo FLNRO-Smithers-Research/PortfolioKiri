@@ -43,7 +43,7 @@ NumericVector simGrowthCBST(DataFrame DF){
     Returns[i] = nTrees*height;
     if(Rcpp::runif(1,0,100)[0] > NoMort[i]){
       prevTrees = nTrees;
-      percentDead = Rcpp::rgamma(1, 1, MeanDead[i]/100)[0];
+      percentDead = Rcpp::rgamma(1, 1, MeanDead[i]/10)[0];
       numDead = (percentDead/100)*prevTrees;
       nTrees = prevTrees - numDead;
     }
