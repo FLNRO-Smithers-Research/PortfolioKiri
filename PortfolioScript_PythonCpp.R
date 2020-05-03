@@ -1,7 +1,7 @@
 ##This script uses a Monte Carlo approach to model tree growth wiht SI numbers and predicted suitability 
 ##It then uses the Markowitz portfolio method to calculate the optimal mix of species.
 ##Python script PortfolioOptimisation.py and C++ script SimGrowth.cpp must be sourced.
-##Kiri Daust, June 2019
+##Kiri Daust, May 2020
 
 require(tcltk)
 require(dplyr)
@@ -21,11 +21,16 @@ library(tidyr)
 rm(list=ls())
 ##wd=tk_choose.dir(); setwd(wd)
 ###source C++ and Python Scripts
-setwd("C:/Users/kirid/Desktop/PortfolioKiri")
+#setwd("C:/Users/kirid/Desktop/PortfolioKiri")
 #setwd(tk_choose.dir())
 sourceCpp("CppFunctions/SimGrowth.cpp")
-#py_install("scipy")
 source_python("PythonFns/PortfolioOptimisation.py") ###make sure you have python as a path variable - easiest way is to install Anaconda
+
+############################################################
+####If doing CBST, stop here and go to line 350############
+##########################################################
+
+
 
 ###OPTIONAL: Set up to run loops in parallel###
 # require(doParallel)
@@ -341,6 +346,8 @@ ggplot(simGrowth, aes(x = as.numeric(Year), y = value, colour = variable, group 
 ####mean cov matrix
 sig <- allSitesSpp$sig
 sig <- dcast(sig, Row ~ Column, value.var = "value", fun.aggregate = mean)
+
+
 ################################################################################################
 ####CBST Portfolio############
 ################################################################################################
@@ -433,7 +440,6 @@ SSPredAll <- SSPredAll[SSPredAll$FuturePeriod %in% modPeriod,]
   allSites <- foreach(SNum = SiteList, .combine = rbind, .packages = c("reshape2","Rcpp","magrittr","scales","reticulate"), .noexport = 
                         c("gs2gw", "simGrowthCBST","simGrowthCpp")) %dopar% {
     
-    #Rcpp::sourceCpp("../CppFunctions/SimGrowth.cpp")
     reticulate::source_python("../PythonFns/PortfolioOptimisation.py")
     
     SSPred <- SSPredAll[SSPredAll$SiteNo == SNum,]
@@ -517,36 +523,36 @@ SSPredAll <- SSPredAll[SSPredAll$FuturePeriod %in% modPeriod,]
     output
   } 
   
-
-  grList <- foreach(SNum = SiteList,.combine = c) %do% {
-    dat <- allSites[allSites$SiteNo == SNum,]
-    dat <- dat[!is.nan(dat$value),]
-    dat <- dcast(dat, Return ~ variable, fun.aggregate = function(x){sum(x)/(15)})
-    dat <- dat[,colMeans(dat, na.rm = T) > 0.02]
-    dat$Sd <- round(dat$Sd,digits = 1)
-    dat <- melt(dat, id.vars = "Sd") %>% dcast(Sd ~ variable, fun.aggregate = mean)
-    dat <- melt(dat, id.vars = "Sd")
-    ret <- dat[dat$variable == "Return",]
-    ret$value <- ret$value/max(ret$value)
-    dat <- dat[dat$variable != "Return",]
-    for(R in unique(dat$Sd)){###scale each out of 1
-      dat$value[dat$Sd == R] <- dat$value[dat$Sd == R]/sum(dat$value[dat$Sd == R])
-    }
-    colnames(dat) <- c("Sd","Seed","Proportion")
-    tmp <- list(ggplot(dat)+
-      geom_area(aes(x = Sd, y = Proportion, fill = Seed),size = 0.00001, col = "black", stat = "identity")+
-      geom_line(data = ret, aes(x = Sd, y = value))+
-      scale_x_reverse())
-    tmp
-  }
-  
-  layoutMat <- rbind(c(1,2,3),
-                     c(4,5,6),
-                     c(7,8,9),
-                     c(10,11,12),
-                     c(13,14,15))
-  
-  grid.arrange(grobs = grList[1:15], layout_matrix = layoutMat)
+ ###To look at each site individually
+  # grList <- foreach(SNum = SiteList,.combine = c) %do% {
+  #   dat <- allSites[allSites$SiteNo == SNum,]
+  #   dat <- dat[!is.nan(dat$value),]
+  #   dat <- dcast(dat, Return ~ variable, fun.aggregate = function(x){sum(x)/(15)})
+  #   dat <- dat[,colMeans(dat, na.rm = T) > 0.02]
+  #   dat$Sd <- round(dat$Sd,digits = 1)
+  #   dat <- melt(dat, id.vars = "Sd") %>% dcast(Sd ~ variable, fun.aggregate = mean)
+  #   dat <- melt(dat, id.vars = "Sd")
+  #   ret <- dat[dat$variable == "Return",]
+  #   ret$value <- ret$value/max(ret$value)
+  #   dat <- dat[dat$variable != "Return",]
+  #   for(R in unique(dat$Sd)){###scale each out of 1
+  #     dat$value[dat$Sd == R] <- dat$value[dat$Sd == R]/sum(dat$value[dat$Sd == R])
+  #   }
+  #   colnames(dat) <- c("Sd","Seed","Proportion")
+  #   tmp <- list(ggplot(dat)+
+  #     geom_area(aes(x = Sd, y = Proportion, fill = Seed),size = 0.00001, col = "black", stat = "identity")+
+  #     geom_line(data = ret, aes(x = Sd, y = value))+
+  #     scale_x_reverse())
+  #   tmp
+  # }
+  # 
+  # layoutMat <- rbind(c(1,2,3),
+  #                    c(4,5,6),
+  #                    c(7,8,9),
+  #                    c(10,11,12),
+  #                    c(13,14,15))
+  # 
+  # grid.arrange(grobs = grList[1:15], layout_matrix = layoutMat)
   
   output <- allSites[complete.cases(allSites),]
   dat <- output
