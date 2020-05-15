@@ -21,7 +21,7 @@ library(tidyr)
 rm(list=ls())
 ##wd=tk_choose.dir(); setwd(wd)
 ###source C++ and Python Scripts
-#setwd("C:/Users/kirid/Desktop/PortfolioKiri")
+setwd("C:/Users/kirid/Desktop/PortfolioKiri")
 #setwd(tk_choose.dir())
 sourceCpp("CppFunctions/SimGrowth.cpp")
 source_python("PythonFns/PortfolioOptimisation.py") ###make sure you have python as a path variable - easiest way is to install Anaconda
@@ -437,10 +437,11 @@ SSPredAll <- SSPredAll[SSPredAll$FuturePeriod %in% modPeriod,]
   clusterCall(cl, worker.init)
   registerDoParallel(cl)
   
-  allSites <- foreach(SNum = SiteList, .combine = rbind, .packages = c("reshape2","Rcpp","magrittr","scales","reticulate"), .noexport = 
-                        c("gs2gw", "simGrowthCBST","simGrowthCpp")) %dopar% {
+  SL = SiteList[1:2]
+  allSites <- foreach(SNum = SL, .combine = rbind, .packages = c("reshape2","Rcpp","magrittr","scales","reticulate"), .noexport = 
+                        c("gs2gw", "simGrowthCBST","simGrowthCpp")) %do% {
     
-    reticulate::source_python("../PythonFns/PortfolioOptimisation.py")
+    #reticulate::source_python("../PythonFns/PortfolioOptimisation.py")
     
     SSPred <- SSPredAll[SSPredAll$SiteNo == SNum,]
     currBGC <- as.character(SSPred$BGC[1])
@@ -484,16 +485,16 @@ SSPredAll <- SSPredAll[SSPredAll$FuturePeriod %in% modPeriod,]
       returns <- modData
       rownames(returns) <- returns[,1]
       returns <- returns[,-1]
-      sigma2 <- as.data.frame(cor(returns)) ###to create cov mat from returns
-      ##target <- set_target(returns, sigma2) ###find range of efficient frontier
-      target <- seq(0.1,0.9,by = 0.02)
+      sigma2 <- as.data.frame(cor(returns)) ###to create cov mat from return
+      ##target <- seq(0.1,0.9,by = 0.02)
       
-      ef <- ef_weights_cbst(returns, sigma2, target, 0, 1, 0.01) ###change to "mean" for maximising return - main python function
+      ef <- ef_weights_cbst(returns, sigma2, 0, 1, 0.05) ###change to "mean" for maximising return - main python function
       ef_w <- as.data.frame(ef[[1]])
       ef_w$Sd <- c(ef[[2]])
       ###########################################
       dat <- ef_w
-      dat$Return <- target
+      dat$Return <- 1:20
+      ##dat$Return <- ef[[3]]
       
       #####graph individual model############
       # datRet <- melt(dat, id.vars = "Sd")
@@ -556,11 +557,10 @@ SSPredAll <- SSPredAll[SSPredAll$FuturePeriod %in% modPeriod,]
   
   output <- allSites[complete.cases(allSites),]
   dat <- output
-  dat <- dat[!is.nan(dat$value),]
-  dat <- dcast(dat, Return ~ variable, fun.aggregate = function(x){sum(x)/(30*length(SiteList))})
-  dat <- dat[,colMeans(dat, na.rm = T) > 0.02]
-  dat$Sd <- round(dat$Sd,digits = 1)
-
+  ##average
+  dat <- dcast(dat, Return ~ variable, fun.aggregate = function(x){sum(x)/(30*length(SL))})
+  dat <- dat[,colMeans(dat) > 0.02]
+  
   datRet <- melt(dat, id.vars = "Return")
   datRet <- datRet[datRet$variable != "Sd",]
   for(R in unique(datRet$Return)){###scale each out of 1
@@ -570,7 +570,7 @@ SSPredAll <- SSPredAll[SSPredAll$FuturePeriod %in% modPeriod,]
     geom_area(aes(x = Return, y = value, fill = variable),size = 0.00001, col = "black", stat = "identity")+
     ggtitle("CBST by Return")
   
-  dat <- melt(dat, id.vars = "Sd") %>% dcast(Sd ~ variable, fun.aggregate = mean)
+  #dat <- melt(dat, id.vars = "Sd") %>% dcast(Sd ~ variable, fun.aggregate = mean)
   dat <- melt(dat, id.vars = "Sd")
   ret <- dat[dat$variable == "Return",]
   ret$value <- ret$value/max(ret$value)
