@@ -477,8 +477,16 @@ SSPredAll <- SSPredAll[FuturePeriod %in% modPeriod,]
     geom_line(data = ret, aes(x = Sd, y = value))+
     scale_x_reverse()+
     ggtitle(paste("CBST ",Spp, sep = ""))
+
+#}
+
+########################OLD CODE#################################
+
+####################################################################
   
- ###To look at each site individually
+  
+  
+  ###To look at each site individually
   # grList <- foreach(SNum = SiteList,.combine = c) %do% {
   #   dat <- allSites[allSites$SiteNo == SNum,]
   #   dat <- dat[!is.nan(dat$value),]
@@ -508,18 +516,6 @@ SSPredAll <- SSPredAll[FuturePeriod %in% modPeriod,]
   #                    c(13,14,15))
   # 
   # grid.arrange(grobs = grList[1:15], layout_matrix = layoutMat)
-  
-  
-
-#}
-
-########################OLD CODE#################################
-
-####################################################################
-  
-  
-  
-  
   
   ####if want to add sharpe ratio to plot - will need to uncomment a bunch of stuff above
   maxS_plot <- ggplot(sharpe)+
