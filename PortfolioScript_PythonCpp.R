@@ -17,6 +17,7 @@ library(gridExtra)
 library(data.table)
 library(scales)
 library(tidyr)
+library(magrittr)
 
 rm(list=ls())
 ##wd=tk_choose.dir(); setwd(wd)
@@ -30,60 +31,31 @@ source_python("PythonFns/PortfolioOptimisation.py") ###make sure you have python
 ####If doing CBST, stop here and go to line 350############
 ##########################################################
 
+#########################################################
+###            SPECIES PORTFOLIO                    #####
+#########################################################
 
-
-###OPTIONAL: Set up to run loops in parallel###
-# require(doParallel)
-# set.seed(123321)
-# coreNum <- as.numeric(detectCores()-2)
-# coreNo <- makeCluster(coreNum)
-# registerDoParallel(coreNo, cores = coreNum)
-
-
-sigma <- read.csv("InputsGit/CovarianceMatrix_Full.csv")
-rownames(sigma) <- sigma[,1]
-sigma <- sigma[,-1]
-Trees <- c("Bl","Cw","Fd","Hw","Lw","Pl","Py","Sx") ##set species to use in portfolio
-nSpp <- length(Trees)
-treeList <- Trees
-sigma <- sigma[Trees,Trees]
-
-repeat.before = function(x) {   # repeats the last non NA value. Keeps leading NA
-  ind = which(!is.na(x))      # get positions of nonmissing values
-  if(is.na(x[1]))             # if it begins with a missing, add the 
-    ind = c(1,ind)        # first position to the indices
-  rep(x[ind], times = diff(   # repeat the values at these indices
-    c(ind, length(x) + 1) )) # diffing the indices + length yields how often 
-}
-
-nsuitF <- file.choose() ##Import suitability table
-SuitTable <- read.csv(nsuitF, stringsAsFactors = FALSE)
+###Read in data
+SuitTable <- fread("InputsGit/TreeSpp_ESuit_v11_18.csv") ##tree spp suitability
 SuitTable <- unique(SuitTable)
 
 colnames(SuitTable)[2:4] <- c("SS_NoSpace","Spp","Suitability")
 
-SIBEC <- read.csv("InputsGit/BartPredSI.csv", stringsAsFactors = FALSE) ###import SI data
-SIBEC <- SIBEC[,-4]
-colnames(SIBEC) <- c("SS_NoSpace", "TreeSpp","MeanPlotSiteIndex")
+SIBEC <- fread("InputsGit/BartPredSI.csv") ###import SI data (currently from BART)
+SIBEC <- SIBEC[,-4] %>% 
+  set_colnames(c("SS_NoSpace", "TreeSpp","MeanPlotSiteIndex"))
 
-SSPredAll <- read.csv(file.choose(), stringsAsFactors = FALSE) ##Import SS predictions from CCISS tool: must have columns MergedBGC, Source, SS_NoSpace, SSprob, SSCurrent, FuturePeriod, SiteNo
+SSPredAll <- fread("InputsGit/FireSSPred.csv") ##Import SS predictions from CCISS tool: must have columns MergedBGC, Source, SS_NoSpace, SSprob, SSCurrent, FuturePeriod, SiteNo
 SSPredAll <- SSPredAll[,c("MergedBGC", "Source", "SS_NoSpace", "SSprob", "SSCurrent", 
                           "FuturePeriod", "SiteNo")]
 selectBGC <- select.list(choices = sort(unique(SSPredAll$SSCurrent)), graphics = TRUE) ###Select BGC to run for
-SSPredAll <- SSPredAll[SSPredAll$SSCurrent == selectBGC,]
+SSPredAll <- SSPredAll[SSCurrent == selectBGC,]
 
 SSPredSave <- SSPredAll
-SSPredAll <- SSPredSave
-
-#####Randomly select 100 sites - if testing to speed up############
-# sites <- as.numeric(as.character(unique(SSPredAll$SiteNo)))
-# SiteList <- sample(sites, 50, replace = FALSE)
-#################################################################
+#SSPredAll <- SSPredSave
 
 SiteList <- unique(SSPredAll$SiteNo[grep("Ele",SSPredAll$SiteNo)]) ###select Elephant hill fire
-##SiteList <- unique(SSPredAll$SiteNo)
-SSPredAll <- SSPredAll[SSPredAll$SiteNo %in% SiteList,]
-SSPredAll <- SSPredAll[!is.na(SSPredAll$SSprob),]
+SSPredAll <- SSPredAll[SiteNo %in% SiteList & !is.na(SSPredAll$SSprob),]
 SList <- unique(SSPredAll$SiteNo)
 ########################
 
@@ -91,81 +63,98 @@ combineList <- function(...) {##Combine multiple dataframe in foreach loop
   mapply(FUN = rbind, ..., SIMPLIFY=FALSE)
 }
 
-Trees <- c("Bl","Cw","Fd","Hw","Lw","Pl","Py","Sx")
-minWt <- c(0,0,0,0,0.05,0.2,0,0.1)
-maxWt <- c(0.3,0.3,0.8,0.5,0.4,0.6,1,1)
-boundDat <- data.frame(Spp = Trees, Min = minWt, Max = maxWt)
+##function to clean data and summarise 
+cleanData <- function(SNum,Trees){
+  SSPred <- SSPredAll[SiteNo == SNum,] ###subset
+  
+  ##Merge SIBEC data
+  SIBEC <- SIBEC[TreeSpp %in% Trees,]
+  SSPred <- SSPred[,c(6,3,4)]
+  SSPred <- merge(SSPred, SIBEC, by = "SS_NoSpace", all.x = TRUE)
+  
+  
+  ###Add rows for species with missing SI - mostly US units here
+  add <- foreach(Year = unique(SSPred$FuturePeriod), .combine = rbind) %do%{
+    byYear <- SSPred[SSPred$FuturePeriod == Year,]
+    foreach(SS = unique(byYear$SS_NoSpace), .combine = rbind) %do%{
+      bySS <- byYear[byYear$SS_NoSpace == SS,]
+      missing <- Trees[!Trees %in% bySS$TreeSpp]
+      new <- bySS[rep(1,length(missing)),]
+      new$TreeSpp <- missing
+      new
+    }
+  }
+  if(nrow(add) > 0){
+    add$MeanPlotSiteIndex <- 5 ##Set missing SI
+    SSPred <- rbind(SSPred, add)
+  }
+  
+  
+  SSPred <- SSPred[!is.na(SSPred$TreeSpp),]
+  colnames(SSPred)[4] <- "Spp"
+  
+  ##Add suitability
+  SSPred <- merge(SSPred, SuitTable, by = c("SS_NoSpace","Spp"), all.x = TRUE)
+  SSPred$Suitability[is.na(SSPred$Suitability)] <- 5
+  
+  ###Create current data
+  current <- SIBEC[SIBEC$SS_NoSpace == selectBGC,] %>% 
+    merge(SuitTable, by.x = c("TreeSpp","SS_NoSpace"), by.y = c("Spp","SS_NoSpace"), all.x = TRUE) %>%
+    unique()
+  
+  ###check that there aren't errors in the table
+  temp <- aggregate(SS_NoSpace ~ TreeSpp, current, FUN = length)
+  if(any(temp$SS_NoSpace > 1)){
+    stop("There are partial duplicates in the suitablity table. Please fix them. :)")
+  }
+  
+  current <- data.frame(Spp = current$TreeSpp, FuturePeriod = 2000, MeanSI = current$MeanPlotSiteIndex, MeanSuit = current$Suitability)
+  
+  missing <- Trees[!Trees %in% current$Spp]
+  if(length(missing) > 0){
+    new <- current[rep(1,length(missing)),]
+    new$Spp <- missing
+    new$MeanSI <- 10
+    new$MeanSuit <- 5
+    current <- rbind(current, new)
+  }
+  
+  ##Summarise data- average SI and Suit weighted by SSProb
+  SS.sum <- SSPred[,.(MeanSI = sum(MeanPlotSiteIndex*(SSprob/sum(SSprob))),
+                      MeanSuit = round(sum(Suitability*(SSprob/sum(SSprob))), digits = 0)),
+                   by = .(Spp,FuturePeriod)]
+  
+  SS.sum <- rbind(SS.sum, current)
+  ###not sure what we were doing here?
+  SS.sum$MeanSI[SS.sum$MeanSuit == 4] <- 5
+  SS.sum$MeanSI[SS.sum$MeanSuit == 5] <- 0
+  SS.sum$MeanSuit[SS.sum$MeanSuit == 5] <- 4
+  SS.sum <- unique(SS.sum)
+  SS.sum <- SS.sum[order(SS.sum$Spp,SS.sum$FuturePeriod),]
+  return(SS.sum)
+}
 
+### Probabilities attached to each suitability
+SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.5,0.5,1,4), 
+                       "NoMort" = c(70,60,50,30)) ####ProbDead- out of 100 trees, how many will die each year at each suitability. NoMort- Percent of time no mortality
 
-###foreach site
-allSitesSpp <- foreach(SNum = SList[1:20], .combine = combineList, 
+Trees <- c("Bl","Cw","Fd","Hw","Lw","Pl","Py","Sx") ##set species to use in portfolio
+nSpp <- length(Trees)
+treeList <- Trees
+##set min and max weights for each species
+# minWt <- c(0,0,0,0,0.05,0.2,0,0.1)
+# maxWt <- c(0.3,0.3,0.8,0.5,0.4,0.6,1,1)
+# boundDat <- data.frame(Spp = Trees, Min = minWt, Max = maxWt)
+minWt <- 0
+maxWt <- 1
+minAccept <- 0.1 ##min acceptable weight in porfolio - if lower, will remove and re-optimize
+
+SL <- SList[1:20]
+allSitesSpp <- foreach(SNum = SL, .combine = rbind, 
                        .packages = c("foreach","reshape2","dplyr","magrittr","PortfolioAnalytics", "Rcpp"), 
                        .noexport = c("simGrowthCpp")) %do% {
-                         SSPred <- SSPredAll[SSPredAll$SiteNo == SNum,] ###subset
                          
-                         ##Merge SIBEC data
-                         SIBEC <- SIBEC[SIBEC$TreeSpp %in% Trees,]
-                         SSPred <- SSPred[,c(6,3,4)]
-                         SSPred <- merge(SSPred, SIBEC, by = "SS_NoSpace", all.x = TRUE)
-                         
-                         ###Add rows for species with missing SI - usually don't need this but safer to keep in
-                         add <- foreach(Year = unique(SSPred$FuturePeriod), .combine = rbind) %do%{
-                           byYear <- SSPred[SSPred$FuturePeriod == Year,]
-                           foreach(SS = unique(byYear$SS_NoSpace), .combine = rbind) %do%{
-                             bySS <- byYear[byYear$SS_NoSpace == SS,]
-                             missing <- Trees[!Trees %in% bySS$TreeSpp]
-                             new <- bySS[rep(1,length(missing)),]
-                             new$TreeSpp <- missing
-                             new
-                           }
-                         }
-                         if(nrow(add) > 0){
-                           add$MeanPlotSiteIndex <- 5 ##Set missing SI
-                           SSPred <- rbind(SSPred, add)
-                         }
-                         SSPred <- SSPred[!is.na(SSPred$TreeSpp),]
-                         colnames(SSPred)[4] <- "Spp"
-                         
-                         ##Add suitability
-                         SSPred <- merge(SSPred, SuitTable, by = c("SS_NoSpace","Spp"), all.x = TRUE)
-                         SSPred$Suitability[is.na(SSPred$Suitability)] <- 5
-                         
-                         ###Create current data
-                         current <- SIBEC[SIBEC$SS_NoSpace == selectBGC,] %>% 
-                           merge(SuitTable, by.x = c("TreeSpp","SS_NoSpace"), by.y = c("Spp","SS_NoSpace"), all.x = TRUE) %>%
-                           unique()
-                         
-                         ###check that there aren't errors in the table
-                         temp <- aggregate(SS_NoSpace ~ TreeSpp, current, FUN = length)
-                         if(any(temp$SS_NoSpace > 1)){
-                           stop("There are partial duplicates in the suitablity table. Please fix them. :)")
-                         }
-                         
-                         current[is.na(current)] <- 5
-                         current[current == 0] <- 10
-                         current <- data.frame(Spp = current$TreeSpp, FuturePeriod = 2000, MeanSI = current$MeanPlotSiteIndex, MeanSuit = current$Suitability)
-                         
-                         missing <- Trees[!Trees %in% current$Spp]
-                         if(length(missing) > 0){
-                           new <- current[rep(1,length(missing)),]
-                           new$Spp <- missing
-                           new$MeanSI <- 10
-                           new$MeanSuit <- 5
-                           current <- rbind(current, new)
-                         }
-                         
-                         ##Summarise data- average SI and Suit weighted by SSProb
-                         SS.sum <- SSPred %>%
-                           group_by(Spp, FuturePeriod) %>%
-                           summarise(MeanSI = sum(MeanPlotSiteIndex*(SSprob/sum(SSprob))), MeanSuit = round(sum(Suitability*(SSprob/sum(SSprob))), digits = 0))
-                         
-                         SS.sum <- as.data.frame(SS.sum) %>% 
-                           rbind(current)
-                         SS.sum$MeanSI[SS.sum$MeanSuit == 4] <- 5
-                         SS.sum$MeanSI[SS.sum$MeanSuit == 5] <- 0
-                         SS.sum$MeanSuit[SS.sum$MeanSuit == 5] <- 4
-                         SS.sum <- unique(SS.sum)
-                         SS.sum <- SS.sum[order(SS.sum$Spp,SS.sum$FuturePeriod),]
+                         SS.sum <- cleanData(SNum, Trees)
                          
                          cols <- rainbow(length(treeList))
                          annualDat <- data.frame("Year" = seq(2000,2100,1))
@@ -174,13 +163,12 @@ allSitesSpp <- foreach(SNum = SList[1:20], .combine = combineList,
                          
                          eff_front <- foreach(w = 1, .combine = combineList) %do% { ##number of iterations
                            output <- data.frame("year" = annualDat$Year)
-                           growthSim <- data.frame(Spp = character(), Year = numeric(), Returns = numeric())
+                           # growthSim <- data.frame(Spp = character(), Year = numeric(), Returns = numeric())
                            
                            for (k in 1:nSpp){ ##for each tree
                              
                              DatSpp <- SS.sum[SS.sum$Spp == treeList[k],]
-                             SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.5,0.5,1,4), 
-                                                    "NoMort" = c(70,60,50,30)) ####ProbDead- out of 100 trees, how many will die each year at each suitability. NoMort- Percent of time no mortality
+                             
                              dat <- data.frame("Period" = c(2000,2025,2055,2085), "SIBEC" = DatSpp$MeanSI, "Suit" = DatSpp$MeanSuit)
                              dat$SIBEC <- dat$SIBEC/50 ##for mean annual increment
                              dat <- merge(dat, SuitProb, by = "Suit")
@@ -196,7 +184,7 @@ allSitesSpp <- foreach(SNum = SList[1:20], .combine = combineList,
                              tmpR <- c(0,Returns)
                              assets <- Returns - tmpR[-length(tmpR)]
                              temp <- data.frame(Spp = rep(treeList[k],101), Year = 1:101, Returns = Returns)
-                             growthSim <- rbind(growthSim, temp)
+                             # growthSim <- rbind(growthSim, temp)
                              output <- cbind(output, assets)
                            } ## for each tree species
                            
@@ -213,71 +201,43 @@ allSitesSpp <- foreach(SNum = SList[1:20], .combine = combineList,
                            returns <- returns[,use]
                            sigma2 <- as.data.frame(cor(returns)) ###to create cov mat from returns
                            ####sigma2 <- sigma[use,use] ###to use pre-made cov mat
-                           target <- set_target(returns, sigma2) ###find range of efficient frontier
-                           
-                           temp <- boundDat[boundDat$Spp %in% colnames(returns),]
-                           ef <- ef_weights(returns, sigma2, target,0,1,0.1) ###change to "mean" for maximising return - main python function
+                           #temp <- boundDat[boundDat$Spp %in% colnames(returns),]
+                           ef <- ef_weights_v2(returns, sigma2, minWt,maxWt,minAccept) 
                            #maxSharpe <- max_sharpe_ratio(returns, sigma2,0)
                            ef_w <- ef[[1]]
-                           
-                           ###add in spp not used
-                           notUse <- setdiff(Trees, colnames(ef_w))
-                           temp <- as.data.frame(matrix(data = 0, nrow = length(target), ncol = length(notUse)))
-                           colnames(temp) <- notUse
-                           ##ef_w <- rbind(ef_w, maxSharpe)
-                           ef_w <- cbind(ef_w, temp)
-                           ef_w$Sd <- c(ef[[2]])
-                           ef_w$Return <- rescale(target, to = c(0,1))
-                           ef_w <- ef_w[,c(Trees, "Sd","Return")]
-                           
-                           # ##to plot individual portfolios
-                           # #############################################
-                           # efAll <- ef_w[ef_w$Return != "mSharpe",]
-                           # efAll$Sd <- efAll$Sd/max(efAll$Sd)
-                           # efAll$Return <- as.numeric(efAll$Return)
-                           # efAll <- melt(efAll, id.vars = "Return")
-                           # print(ggplot(efAll[efAll$variable != "Sd",])+
-                           #   geom_bar(aes(x = Return, y = value, fill = variable),size = 0.00001, col = "black", stat = "identity")+
-                           #   colScale +
-                           #   geom_line(data = efAll[efAll$variable == "Sd",], aes(x = Return, y = value))+
-                           #   #theme(legend.position = "none")+
-                           #   xlab("Volatility"))
-                           # ############################################
+                           ef_w$Sd <- ef[[2]]
+                           ef_w$Return <- 1:20
                            ef_w$It <- w
                            
-                           sigmaOut <- sigma2
-                           sigmaOut$Row <- rownames(sigmaOut)
-                           sigmaOut <- melt(sigmaOut)
-                           colnames(sigmaOut)[2] <- "Column"
-                           sigmaOut$It <- 4
-                           list(frontier = ef_w, sim = growthSim, sig = sigmaOut)
+                           # sigmaOut <- sigma2
+                           # sigmaOut$Row <- rownames(sigmaOut)
+                           # sigmaOut <- melt(sigmaOut)
+                           # colnames(sigmaOut)[2] <- "Column"
+                           # sigmaOut$It <- 4
+                           list(frontier = ef_w)
                          }
                          
-                         eff_front2 <- melt(eff_front[['frontier']], id.vars = c("Return","It"))
-                         eff_front2 <- dcast(eff_front2, Return ~ variable, fun.aggregate = mean)
+                         # eff_front2 <- melt(eff_front[['frontier']], id.vars = c("Return","It"))
+                         # eff_front2 <- dcast(eff_front2, Return ~ variable, fun.aggregate = mean)
+                         eff_front2 <- as.data.table(eff_front[['frontier']])
                          eff_front2$SiteNo <- SNum
-                         growthSim <- eff_front$sim
-                         growthSim$SiteNo <- SNum
-                         sigmaOut <- eff_front$sig
-                         sigmaOut$SiteNo <- SNum
-                         list(frontier = eff_front2, sim = growthSim, sig = sigmaOut)
+                         # growthSim <- eff_front$sim
+                         # growthSim$SiteNo <- SNum
+                         # sigmaOut <- eff_front$sig
+                         # sigmaOut$SiteNo <- SNum
+                         melt(eff_front2, id.vars = c("Return","It","SiteNo"),variable.name = "Spp")
                        }
 
-###The optimisation works much better with set returns and optimising stdev - the opposite of what we're plotting
-###We have to therefore round Sd values so that they're not unequally spaced when we combine and average
 
 ##############################################
-efAll <- allSitesSpp[['frontier']] ###portfolio output
-efAll$Return <- round(efAll$Return, digits = 2)
-efAll <- efAll[,-length(efAll)]
-efAll <- melt(efAll, id.vars = "Return") %>% dcast(Return ~ variable, fun.aggregate = mean)
+##plot by volatility
+
+efAll <- allSitesSpp
+efAll <- efAll[,-c("It")]
+efAll <- dcast(efAll,Return ~ Spp, fun.aggregate = function(x){sum(x)/(length(SL))})
 efAll <- efAll[complete.cases(efAll),]
 efAll$Return <- efAll$Return/max(efAll$Return) ##standardise return
-ef1 <- c(efAll$Sd,1)
-ef2 <- c(0, efAll$Sd)
-temp <- ef1 - ef2
-temp <- temp[-1]
-efAll <- efAll[temp > 0,]
+
 efAll <- melt(efAll, id.vars = "Sd")
 
 myColours <- c("red","pink", "orange","yellow","green","blue","magenta","darkgoldenrod")
@@ -290,17 +250,14 @@ ggplot(efAll[efAll$variable != "Return",])+
   geom_line(data = efAll[efAll$variable == "Return",], aes(x = Sd, y = value))+
   scale_x_reverse() +
   xlab("Volatility")+
-  ggtitle("EleHill IDFdk3")
+  ggtitle(BGC)
 
 #############################################################3
 ###plot by return#####################
-efAll <- allSitesSpp[['frontier']] ###portfolio output
-efAll$Return <- round(efAll$Return, digits = 2)
-efAll <- efAll[,-length(efAll)]
-efAll <- melt(efAll, id.vars = "Return") %>% dcast(Return ~ variable, fun.aggregate = mean)
-efAll <- apply(efAll, 2, repeat.before) %>% as.data.frame()
-efAll$Return <- efAll$Return/max(efAll$Return) ##standardise return
-efAll[is.na(efAll)] <- 0
+efAll <- allSitesSpp ###portfolio output
+efAll <- efAll[,-c("It")]
+efAll <- dcast(efAll,Return ~ Spp, fun.aggregate = function(x){sum(x)/(length(SL))})
+efAll <- efAll[complete.cases(efAll),]
 efAll <- melt(efAll, id.vars = "Return")
 
 myColours <- c("red","pink", "orange","yellow","green","blue","magenta","darkgoldenrod")
@@ -312,40 +269,11 @@ ggplot(efAll[efAll$variable != "Sd",])+
   colScale +
   geom_line(data = efAll[efAll$variable == "Sd",], aes(x = Return, y = value))+
   scale_x_reverse() +
-  xlab("Volatility")+
-  ggtitle("Plat IDFdk3")
+  xlab("Return")+
+  ggtitle(BGC)
 
 
 
-####if want to add sharpe ratio to plot - will need to uncomment a bunch of stuff above
-maxS_plot <- ggplot(sharpe)+
-  geom_bar(aes(x = "", y = Weight, fill = Spp),size = 0.00001, col = "black", stat = "identity")+
-  colScale+
-  theme(axis.title.y = element_blank(),axis.text.y = element_blank(),axis.ticks.y = element_blank())+
-  xlab("")
-
-layoutMat <- rbind(c(1,1,1,2),
-                   c(1,1,1,2),
-                   c(1,1,1,2))
-
-grid.arrange(grobs = list(ef_plot,maxS_plot), layout_matrix = layoutMat)
-
-###investigate simulated growth
-simGrowth <- allSitesSpp[['sim']]
-simGrowth <- dcast(simGrowth, SiteNo+Year ~ Spp, fun.aggregate = mean, value.var = "Returns")
-simGrowth <- melt(simGrowth, id.vars = c("SiteNo","Year"))
-simGrowth$g <- interaction(simGrowth$SiteNo, simGrowth$variable)
-
-myColours <- c("red","pink", "orange","yellow","green","blue","magenta","darkgoldenrod")
-names(myColours) <- levels(factor(Trees))
-colScale <- scale_colour_manual(name = "variable", values = myColours)
-ggplot(simGrowth, aes(x = as.numeric(Year), y = value, colour = variable, group = g))+
-  geom_line(alpha = 0.6)+
-  colScale
-
-####mean cov matrix
-sig <- allSitesSpp$sig
-sig <- dcast(sig, Row ~ Column, value.var = "value", fun.aggregate = mean)
 
 
 ################################################################################################
@@ -385,22 +313,18 @@ colnames(allSppDat) <- c("Site","Seed","Height", "Spp")
 
 
 ##import BGC prediction by model
-SSPredAll <- read.csv(file.choose())##import BGC predictions from CCISS script
+SSPredAll <- fread("CBSTPredFirePoints.csv")##import BGC predictions from CCISS script
 BGC <- "IDFdk3" ###select BGC
 # SSPredAll <- separate(SSPredAll, GCM, c("GCM","Scenario"), sep = "_")
 # SSPredAll$GCM <- paste(SSPredAll$GCM, SSPredAll$Scenario, sep = "-")
 # SSPredAll <- SSPredAll[,-2]
-SSPredAll <- SSPredAll[SSPredAll$BGC == BGC,]
+SSPredAll <- SSPredAll[BGC == BGC,]
 SSPredAll <- SSPredAll[grep("Ele",SSPredAll$SiteNo),]
-SSPredAll <- SSPredAll[SSPredAll$FuturePeriod %in% modPeriod,]
+SSPredAll <- SSPredAll[FuturePeriod %in% modPeriod,]
 
-# SSPredAll <- SSPredAll[SSPredAll$SiteNo %in% SiteList,]
-
-
-###foreach spp - not yet working with all species, do each species individually
 ##allSitesSpp <- foreach(Spp = Trees, .combine = combineList) %do% {
 
-  Spp = "Sx"
+  Spp = "Fdi"
   SuitTable <- allSppDat[allSppDat$Spp == Spp,]
   SuitTable <- SuitTable[,-4]
   SSPredAll$SiteNo <- as.character(SSPredAll$SiteNo)
@@ -429,19 +353,20 @@ SSPredAll <- SSPredAll[SSPredAll$FuturePeriod %in% modPeriod,]
     Rcpp::sourceCpp("../CppFunctions/SimGrowth.cpp")
     reticulate::source_python("../PythonFns/PortfolioOptimisation.py")
   }
-  
-  
-  
+
   require(doParallel)
   cl <- makePSOCKcluster(detectCores()-2)
   clusterCall(cl, worker.init)
   registerDoParallel(cl)
   
-  SL = SiteList[1:2]
+  SL = SiteList[1:5]
+  minWt <- 0
+  maxWt <- 1
+  minAccept <- 0.05
   allSites <- foreach(SNum = SL, .combine = rbind, .packages = c("reshape2","Rcpp","magrittr","scales","reticulate"), .noexport = 
-                        c("gs2gw", "simGrowthCBST","simGrowthCpp")) %do% {
+                        c("gs2gw", "simGrowthCBST","simGrowthCpp")) %dopar% {
     
-    #reticulate::source_python("../PythonFns/PortfolioOptimisation.py")
+    reticulate::source_python("../PythonFns/PortfolioOptimisation.py")
     
     SSPred <- SSPredAll[SSPredAll$SiteNo == SNum,]
     currBGC <- as.character(SSPred$BGC[1])
@@ -471,7 +396,6 @@ SSPredAll <- SSPredAll[SSPredAll$FuturePeriod %in% modPeriod,]
                            Height = SuitTable$Height[SuitTable$Site == BGC & SuitTable$Seed == as.character(seed)])
         SS.sum <- rbind(curr, SS.sum)
         SS.sum$Height <- gs2gw(SS.sum$Height, as.numeric(params[1]), as.numeric(params[2]))
-        ##SS.sum[SS.sum < 0.005] <- -1
         SS.sum <- SS.sum[complete.cases(SS.sum),]
         
         Returns <- simulateGrowth(SS.sum$Height, nYears = modelYears)
@@ -488,7 +412,7 @@ SSPredAll <- SSPredAll[SSPredAll$FuturePeriod %in% modPeriod,]
       sigma2 <- as.data.frame(cor(returns)) ###to create cov mat from return
       ##target <- seq(0.1,0.9,by = 0.02)
       
-      ef <- ef_weights_cbst(returns, sigma2, 0, 1, 0.05) ###change to "mean" for maximising return - main python function
+      ef <- ef_weights_v2(returns, sigma2, minWt, maxWt, minAccept) ###change to "mean" for maximising return - main python function
       ef_w <- as.data.frame(ef[[1]])
       ef_w$Sd <- c(ef[[2]])
       ###########################################
@@ -522,7 +446,37 @@ SSPredAll <- SSPredAll[SSPredAll$FuturePeriod %in% modPeriod,]
     }
     output$SiteNo <- SNum
     output
-  } 
+                        } 
+  ### graph by return and volatility
+  output <- allSites[complete.cases(allSites),]
+  dat <- output
+  ##average
+  dat <- dcast(dat, Return ~ variable, fun.aggregate = function(x){sum(x)/(30*length(SL))})
+  dat <- dat[,colMeans(dat) > 0.02]
+  
+  datRet <- melt(dat, id.vars = "Return")
+  datRet <- datRet[datRet$variable != "Sd",]
+  for(R in unique(datRet$Return)){###scale each out of 1
+    datRet$value[datRet$Return == R] <- datRet$value[datRet$Return == R]/sum(datRet$value[datRet$Return == R])
+  }
+  ggplot(datRet)+
+    geom_area(aes(x = Return, y = value, fill = variable),size = 0.00001, col = "black", stat = "identity")+
+    ggtitle("CBST by Return")
+  
+  #dat <- melt(dat, id.vars = "Sd") %>% dcast(Sd ~ variable, fun.aggregate = mean)
+  dat <- melt(dat, id.vars = "Sd")
+  ret <- dat[dat$variable == "Return",]
+  ret$value <- ret$value/max(ret$value)
+  dat <- dat[dat$variable != "Return",]
+  for(R in unique(dat$Sd)){###scale each out of 1
+    dat$value[dat$Sd == R] <- dat$value[dat$Sd == R]/sum(dat$value[dat$Sd == R])
+  }
+  colnames(dat) <- c("Sd","Seed","Proportion")
+  ggplot(dat)+
+    geom_area(aes(x = Sd, y = Proportion, fill = Seed),size = 0.00001, col = "black", stat = "identity")+
+    geom_line(data = ret, aes(x = Sd, y = value))+
+    scale_x_reverse()+
+    ggtitle(paste("CBST ",Spp, sep = ""))
   
  ###To look at each site individually
   # grList <- foreach(SNum = SiteList,.combine = c) %do% {
@@ -555,41 +509,48 @@ SSPredAll <- SSPredAll[SSPredAll$FuturePeriod %in% modPeriod,]
   # 
   # grid.arrange(grobs = grList[1:15], layout_matrix = layoutMat)
   
-  output <- allSites[complete.cases(allSites),]
-  dat <- output
-  ##average
-  dat <- dcast(dat, Return ~ variable, fun.aggregate = function(x){sum(x)/(30*length(SL))})
-  dat <- dat[,colMeans(dat) > 0.02]
   
-  datRet <- melt(dat, id.vars = "Return")
-  datRet <- datRet[datRet$variable != "Sd",]
-  for(R in unique(datRet$Return)){###scale each out of 1
-    datRet$value[datRet$Return == R] <- datRet$value[datRet$Return == R]/sum(datRet$value[datRet$Return == R])
-  }
-  ggplot(datRet)+
-    geom_area(aes(x = Return, y = value, fill = variable),size = 0.00001, col = "black", stat = "identity")+
-    ggtitle("CBST by Return")
-  
-  #dat <- melt(dat, id.vars = "Sd") %>% dcast(Sd ~ variable, fun.aggregate = mean)
-  dat <- melt(dat, id.vars = "Sd")
-  ret <- dat[dat$variable == "Return",]
-  ret$value <- ret$value/max(ret$value)
-  dat <- dat[dat$variable != "Return",]
-  for(R in unique(dat$Sd)){###scale each out of 1
-    dat$value[dat$Sd == R] <- dat$value[dat$Sd == R]/sum(dat$value[dat$Sd == R])
-  }
-  colnames(dat) <- c("Sd","Seed","Proportion")
-  ggplot(dat)+
-    geom_area(aes(x = Sd, y = Proportion, fill = Seed),size = 0.00001, col = "black", stat = "identity")+
-    geom_line(data = ret, aes(x = Sd, y = value))+
-    scale_x_reverse()+
-    ggtitle(paste("CBST ",Spp, sep = ""))
 
 #}
 
 ########################OLD CODE#################################
 
 ####################################################################
+  
+  
+  
+  
+  
+  ####if want to add sharpe ratio to plot - will need to uncomment a bunch of stuff above
+  maxS_plot <- ggplot(sharpe)+
+    geom_bar(aes(x = "", y = Weight, fill = Spp),size = 0.00001, col = "black", stat = "identity")+
+    colScale+
+    theme(axis.title.y = element_blank(),axis.text.y = element_blank(),axis.ticks.y = element_blank())+
+    xlab("")
+  
+  layoutMat <- rbind(c(1,1,1,2),
+                     c(1,1,1,2),
+                     c(1,1,1,2))
+  
+  grid.arrange(grobs = list(ef_plot,maxS_plot), layout_matrix = layoutMat)
+  
+  ###investigate simulated growth
+  simGrowth <- allSitesSpp[['sim']]
+  simGrowth <- dcast(simGrowth, SiteNo+Year ~ Spp, fun.aggregate = mean, value.var = "Returns")
+  simGrowth <- melt(simGrowth, id.vars = c("SiteNo","Year"))
+  simGrowth$g <- interaction(simGrowth$SiteNo, simGrowth$variable)
+  
+  myColours <- c("red","pink", "orange","yellow","green","blue","magenta","darkgoldenrod")
+  names(myColours) <- levels(factor(Trees))
+  colScale <- scale_colour_manual(name = "variable", values = myColours)
+  ggplot(simGrowth, aes(x = as.numeric(Year), y = value, colour = variable, group = g))+
+    geom_line(alpha = 0.6)+
+    colScale
+  
+  ####mean cov matrix
+  sig <- allSitesSpp$sig
+  sig <- dcast(sig, Row ~ Column, value.var = "value", fun.aggregate = mean)
+  
 
 titles <- c("CBST Pine","", "CBST Spruce")
 zoneCols <- read.csv("PortfolioColours.csv")
@@ -828,4 +789,41 @@ target <- seq(0.55,0.75,by = 0.02)
 target <- seq(0.65, 0.8, by = 0.01)
 target <- seq(0.3,0.65, by = 0.02)
 
+repeat.before = function(x) {   # repeats the last non NA value. Keeps leading NA
+  ind = which(!is.na(x))      # get positions of nonmissing values
+  if(is.na(x[1]))             # if it begins with a missing, add the 
+    ind = c(1,ind)        # first position to the indices
+  rep(x[ind], times = diff(   # repeat the values at these indices
+    c(ind, length(x) + 1) )) # diffing the indices + length yields how often 
+}
 
+
+# ###add in spp not used
+# notUse <- setdiff(Trees, colnames(ef_w))
+# temp <- as.data.frame(matrix(data = 0, nrow = length(target), ncol = length(notUse)))
+# colnames(temp) <- notUse
+# ##ef_w <- rbind(ef_w, maxSharpe)
+# ef_w <- cbind(ef_w, temp)
+# ef_w$Sd <- c(ef[[2]])
+# ef_w$Return <- rescale(target, to = c(0,1))
+# ef_w <- ef_w[,c(Trees, "Sd","Return")]
+
+# ##to plot individual portfolios
+# #############################################
+# efAll <- ef_w[ef_w$Return != "mSharpe",]
+# efAll$Sd <- efAll$Sd/max(efAll$Sd)
+# efAll$Return <- as.numeric(efAll$Return)
+# efAll <- melt(efAll, id.vars = "Return")
+# print(ggplot(efAll[efAll$variable != "Sd",])+
+#   geom_bar(aes(x = Return, y = value, fill = variable),size = 0.00001, col = "black", stat = "identity")+
+#   colScale +
+#   geom_line(data = efAll[efAll$variable == "Sd",], aes(x = Return, y = value))+
+#   #theme(legend.position = "none")+
+#   xlab("Volatility"))
+# ############################################
+
+ef1 <- c(efAll$Sd,1)
+ef2 <- c(0, efAll$Sd)
+temp <- ef1 - ef2
+temp <- temp[-1]
+efAll <- efAll[temp > 0,]

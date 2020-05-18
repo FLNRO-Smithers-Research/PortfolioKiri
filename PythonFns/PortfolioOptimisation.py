@@ -78,7 +78,7 @@ def set_target(mean_returns, cov_matrix):
     target = np.linspace(min_round, max_round, 20)
     return target
 
-def ef_weights_cbst(returns, cov_matrix, minWt, maxWt, minTot): ##optType either mean or stdev - main R function
+def ef_weights_v2(returns, cov_matrix, minWt, maxWt, minTot): ##optType either mean or stdev - main R function
     spp = cov_matrix.columns
     sppUse = spp
     mean_returns = returns.mean()
