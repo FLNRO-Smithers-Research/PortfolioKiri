@@ -2,7 +2,9 @@
 title: "SpeciesPortfolio"
 author: "Kiri Daust"
 date: "17/05/2020"
-output: html_document
+output:
+  html_document: default
+  pdf_document: default
 ---
 
 This script uses an adaptation of Markowitz portolio method to calculate the optimal mix of tree species, based on modelling species growth using site predictions from the CCISS tool, and estimating SIBEC data. The main optimisation functions are sourced from a C++ and Python script.
@@ -28,8 +30,8 @@ require(zoo)
 
 Source functions from C and Py
 ```{r read in  portfolio functions}
-sourceCpp("CppFunctions/SimGrowth.cpp")
-source_python("PythonFns/PortfolioOptimisation.py")
+sourceCpp("./CppFunctions/SimGrowth.cpp")
+source_python("./PythonFns/PortfolioOptimisation.py")
 ```
 
 Load data
