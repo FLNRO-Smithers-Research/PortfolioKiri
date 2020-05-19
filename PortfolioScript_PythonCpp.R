@@ -365,7 +365,7 @@ SSPredAll <- SSPredAll[FuturePeriod %in% modPeriod,]
   minAccept <- 0.05
   allSites <- foreach(SNum = SL, .combine = rbind, .packages = c("reshape2","Rcpp","magrittr","scales","reticulate"), .noexport = 
                         c("gs2gw", "simGrowthCBST","simGrowthCpp")) %dopar% {
-    
+
     reticulate::source_python("../PythonFns/PortfolioOptimisation.py")
     
     SSPred <- SSPredAll[SSPredAll$SiteNo == SNum,]

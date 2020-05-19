@@ -2,7 +2,9 @@
 title: "SpeciesPortfolio"
 author: "Kiri Daust"
 date: "17/05/2020"
-output: html_document
+output:
+  html_document: default
+  pdf_document: default
 ---
 
 This script uses an adaptation of Markowitz portolio method to calculate the optimal mix of tree species, based on modelling species growth using site predictions from the CCISS tool, and estimating SIBEC data. The main optimisation functions are sourced from a C++ and Python script.
@@ -23,18 +25,19 @@ library(data.table)
 library(scales)
 library(tidyr)
 library(magrittr)
+require(zoo)
 ```
 
 Source functions from C and Py
-```{r}
-sourceCpp("CppFunctions/SimGrowth.cpp")
-source_python("PythonFns/PortfolioOptimisation.py")
+```{r read in  portfolio functions}
+sourceCpp("./CppFunctions/SimGrowth.cpp")
+source_python("./PythonFns/PortfolioOptimisation.py")
 ```
 
 Load data
-```{r}
+```{r load species data}
 ###Read in data
-SuitTable <- fread("InputsGit/TreeSpp_ESuit_v11_18.csv") ##tree spp suitability
+SuitTable <- fread("InputsGit/Feasibility_v11_21.csv") ##tree spp suitability
 SuitTable <- unique(SuitTable)
 
 colnames(SuitTable)[2:4] <- c("SS_NoSpace","Spp","Suitability")
@@ -59,7 +62,7 @@ SList <- unique(SSPredAll$SiteNo)
 ```
 
 Function to clean and summarise SIBEC and CCISS data
-```{r}
+```{r CCISS predictions}
 ##function to clean data and summarise 
 cleanData <- function(SNum,Trees){
   SSPred <- SSPredAll[SiteNo == SNum,] ###subset
@@ -138,12 +141,12 @@ combineList <- function(...) {##Combine multiple dataframe in foreach loop
 ```
 
 Specify parameters...
-```{r}
+```{r model parameters}
 ### Probabilities attached to each suitability
 SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.5,0.5,1,4), 
                        "NoMort" = c(70,60,50,30)) ####ProbDead- out of 100 trees, how many will die each year at each suitability. NoMort- Percent of time no mortality
 
-Trees <- c("Bl","Cw","Fd","Hw","Lw","Pl","Py","Sx") ##set species to use in portfolio
+Trees <- c("At","Bl","Cw","Fd","Hw","Lw","Pl","Py","Sx") ##set species to use in portfolio
 nSpp <- length(Trees)
 treeList <- Trees
 ##set min and max weights for each species
@@ -158,8 +161,8 @@ minAccept <- 0.1 ##min acceptable weight in porfolio - if lower, will remove and
 
 Run optimisation (note this may take a bit)
 
-```{r}
-SL <- SList[1:20]
+```{r run portfolio}
+SL <- SList#[1:20]
 allSitesSpp <- foreach(SNum = SL, .combine = rbind, 
                        .packages = c("foreach","reshape2","dplyr","magrittr","PortfolioAnalytics", "Rcpp"), 
                        .noexport = c("simGrowthCpp")) %do% {
@@ -228,7 +231,9 @@ allSitesSpp <- foreach(SNum = SL, .combine = rbind,
 
 Plot by volatility...
 
-```{r}
+```{r plot portfolio curves}
+require(ggthemes)
+
 efAll <- allSitesSpp
 efAll <- efAll[,-c("It")]
 efAll <- dcast(efAll,Return ~ Spp, fun.aggregate = function(x){sum(x)/(length(SL))})
@@ -237,7 +242,7 @@ efAll$Return <- efAll$Return/max(efAll$Return) ##standardise return
 
 efAll <- melt(efAll, id.vars = "Sd")
 
-myColours <- c("red","pink", "orange","yellow","green","blue","magenta","darkgoldenrod")
+myColours <- c("brown","red","pink", "orange","yellow","green","blue","magenta","darkgoldenrod")
 names(myColours) <- levels(factor(Trees))
 colScale <- scale_fill_manual(name = "variable", values = myColours)
 
@@ -247,6 +252,8 @@ ggplot(efAll[efAll$variable != "Return",])+
   geom_line(data = efAll[efAll$variable == "Return",], aes(x = Sd, y = value))+
   scale_x_reverse() +
   xlab("Volatility")+
-  ggtitle(selectBGC)
+  ggtitle(selectBGC)+
+  theme_few()
+  #scale_colour_few()
 
 ```
