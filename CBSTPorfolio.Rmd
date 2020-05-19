@@ -23,8 +23,8 @@ library(data.table)
 library(scales)
 library(tidyr)
 
-path_to_python <- "C:/Users/whmacken/anaconda3"
-use_python(path_to_python)
+# path_to_python <- "C:/Users/whmacken/anaconda3"
+# use_python(path_to_python)
 
 sourceCpp("CppFunctions/SimGrowth.cpp")
 reticulate::source_python("PythonFns/PortfolioOptimisation.py")
@@ -47,7 +47,6 @@ params <- setGW(0.96)
 ```{r input}
 modelYears <- 60
 modPeriod <- c(2025,2055)
-individualGraphs <- "No" ##print graphs for each model?
 
 ###read in CBST data
 Trees <- c("Bl","Cw","Fdi","Hw","Lw","Pli","Py","Sx") ##set species to use in portfolio
@@ -61,17 +60,18 @@ allSppDat <- foreach(Spp = Trees, .combine = rbind) %do% {
 }
 colnames(allSppDat) <- c("Site","Seed","Height", "Spp")
 
+
 ##import BGC prediction by model
-SSPredAll <- read.csv(file.choose())##import BGC predictions from CCISS script
+SSPredAll <- fread("CBSTPredFirePoints.csv")##import BGC predictions from CCISS script
 BGC <- "IDFdk3" ###select BGC
-SSPredAll <- SSPredAll[SSPredAll$BGC == BGC,]
+SSPredAll <- SSPredAll[BGC == BGC,]
 SSPredAll <- SSPredAll[grep("Ele",SSPredAll$SiteNo),]
-SSPredAll <- SSPredAll[SSPredAll$FuturePeriod %in% modPeriod,]
+SSPredAll <- SSPredAll[FuturePeriod %in% modPeriod,]
 ```
 
 ### Setup parallelisation
 - Have to load python/c functions on each worker
-
+- Parallel not working on Will's machine
 ```{r parallel}
 worker.init <- function(){
     Rcpp::sourceCpp("../CppFunctions/SimGrowth.cpp")
@@ -84,18 +84,23 @@ clusterCall(cl, worker.init)
 registerDoParallel(cl)
 ```
 
-### Run CBST Portfolio
+### Set Parameters and load functions
 
-```{r runPortfolio}
-Spp = "Fdi"
-SuitTable <- allSppDat[allSppDat$Spp == Spp,]
-SuitTable <- SuitTable[,-4]
+```{r setParams}
+
+SuitTable <- allSppDat[allSppDat$Spp == Spp,-4] %>% as.data.table()
 SSPredAll$SiteNo <- as.character(SSPredAll$SiteNo)
 SSPredAll <- SSPredAll[order(SSPredAll$SiteNo,SSPredAll$GCM),]
 SiteList <- unique(SSPredAll$SiteNo)
 
+SL = SiteList[1:20]
+minWt <- 0
+maxWt <- 1
+minAccept <- 0.05
+Spp = "Fdi"
+
 simulateGrowth <- function(x, nYears = modYears){ ###remove any not suitable in any time period
-  if(any(x < 0) || max(x) < 0.5){return(NULL)}
+  if(any(x < 0) || max(x) < 0.6){return(NULL)}
   else{
     s <- spline(c(2000,modPeriod), x, n = nYears+1)
     growthRate <- s[["y"]]
@@ -110,10 +115,12 @@ simulateGrowth <- function(x, nYears = modYears){ ###remove any not suitable in 
   }
   
 }
+```
 
-allSites <- foreach(SNum = SiteList, .combine = rbind, .packages = c("reshape2","Rcpp","magrittr","scales","reticulate"), .noexport = 
+```{r runCBST}
+allSites <- foreach(SNum = SL, .combine = rbind, .packages = c("reshape2","Rcpp","magrittr","scales","reticulate"), .noexport = 
                         c("gs2gw", "simGrowthCBST","simGrowthCpp")) %dopar% {
-    
+
     reticulate::source_python("../PythonFns/PortfolioOptimisation.py")
     
     SSPred <- SSPredAll[SSPredAll$SiteNo == SNum,]
@@ -156,62 +163,46 @@ allSites <- foreach(SNum = SiteList, .combine = rbind, .packages = c("reshape2",
       returns <- modData
       rownames(returns) <- returns[,1]
       returns <- returns[,-1]
-      sigma2 <- as.data.frame(cor(returns)) ###to create cov mat from returns
-      ##target <- set_target(returns, sigma2) ###find range of efficient frontier
-      target <- seq(0.3,0.9,by = 0.02)
+      sigma2 <- as.data.frame(cor(returns)) ###to create cov mat from return
       
-      ef <- ef_weights_cbst(returns, sigma2, target, 0, 1, 0.15) ## call python function
+      ef <- ef_weights_v2(returns, sigma2, minWt, maxWt, minAccept) 
       ef_w <- as.data.frame(ef[[1]])
       ef_w$Sd <- c(ef[[2]])
-      
       dat <- ef_w
-      dat$Return <- target
-      
-      #####graph individual model############
-      if(individualGraphs == "Yes"){
-        datRet <- melt(dat, id.vars = "Sd")
-        datRet <- datRet[datRet$variable != "Return",]
-        datRet$Sd <- round(datRet$Sd, digits = 2)
-        datRet <- dcast(datRet, Sd ~ variable, fun.aggregate = mean) %>% melt(id.vars = "Sd")
-        for(R in unique(datRet$Sd)){###scale each out of 1
-          datRet$value[datRet$Sd == R] <- datRet$value[datRet$Sd == R]/sum(datRet$value[datRet$Sd == R])
-        }
-        grList[[mod]] <- (ggplot(datRet)+
-          geom_area(aes(x = Sd, y = value, fill = variable),size = 0.00001, col = "black", stat = "identity")+
-          scale_x_reverse()+
-          ggtitle(mod))
-      }
-      
-      ########################################
-      
-      dat$Sd <- round(dat$Sd, digits = 2)
+      dat$Return <- 1:20
+
       dat <- melt(dat, id.vars = "Return")
       dat$Model <- mod
       output <- rbind(output, dat)
     }
     output$SiteNo <- SNum
     output
-  } 
+}
+                        
 ```
 
 ### Graph results
 
 ```{r graph}
-dat <- allSites[complete.cases(allSites),]
-dat <- dat[!is.nan(dat$value),]
-dat <- dcast(dat, Return ~ variable, fun.aggregate = function(x){sum(x)/(30*length(SiteList))})
-dat <- dat[,colMeans(dat, na.rm = T) > 0.01]
-dat$Sd <- round(dat$Sd,digits = 1)
+### graph by return and volatility
+output <- allSites[complete.cases(allSites),]
+dat <- output
+##average
+dat <- dcast(dat, Return ~ variable, fun.aggregate = function(x){sum(x)/(30*length(SL))})
+dat <- dat[,colMeans(dat) > 0.02]
 
-dat <- melt(dat, id.vars = "Sd") %>% dcast(Sd ~ variable, fun.aggregate = mean)
 dat <- melt(dat, id.vars = "Sd")
+ret <- dat[dat$variable == "Return",]
+ret$value <- ret$value/max(ret$value)
 dat <- dat[dat$variable != "Return",]
 for(R in unique(dat$Sd)){###scale each out of 1
   dat$value[dat$Sd == R] <- dat$value[dat$Sd == R]/sum(dat$value[dat$Sd == R])
 }
+colnames(dat) <- c("Sd","Seed","Proportion")
 ggplot(dat)+
-  geom_area(aes(x = Sd, y = value, fill = variable),size = 0.00001, col = "black", stat = "identity")+
+  geom_area(aes(x = Sd, y = Proportion, fill = Seed),size = 0.00001, col = "black", stat = "identity")+
+  geom_line(data = ret, aes(x = Sd, y = value))+
   scale_x_reverse()+
-  ggtitle("CBST by Volatility")
+  ggtitle(paste("CBST ",Spp, sep = ""))
 
 ```
