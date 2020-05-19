@@ -437,8 +437,8 @@ SSPredAll <- SSPredAll[SSPredAll$FuturePeriod %in% modPeriod,]
   clusterCall(cl, worker.init)
   registerDoParallel(cl)
   
-  allSites <- foreach(SNum = SiteList, .combine = rbind, .packages = c("reshape2","Rcpp","magrittr","scales","reticulate"), .noexport = 
-                        c("gs2gw", "simGrowthCBST","simGrowthCpp")) %dopar% {
+  allSites <- foreach(SNum = SiteList[1:5], .combine = rbind, .packages = c("reshape2","Rcpp","magrittr","scales","reticulate"), .noexport = 
+                        c("gs2gw", "simGrowthCBST","simGrowthCpp")) %do% {
     
     reticulate::source_python("../PythonFns/PortfolioOptimisation.py")
     
