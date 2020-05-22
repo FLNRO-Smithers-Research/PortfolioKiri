@@ -1,4 +1,4 @@
----
+  ---
 title: "SpeciesPortfolio"
 author: "Kiri Daust"
 date: "17/05/2020"
@@ -17,7 +17,6 @@ require(MASS)
 require(magrittr)
 require(foreach)
 require(reshape2)
-require(doParallel)
 require(reticulate)
 require(Rcpp)
 library(gridExtra)
@@ -25,7 +24,6 @@ library(data.table)
 library(scales)
 library(tidyr)
 library(magrittr)
-require(zoo)
 ```
 
 Source functions from C and Py
@@ -164,7 +162,7 @@ Run optimisation (note this may take a bit)
 ```{r run portfolio}
 SL <- SList#[1:20]
 allSitesSpp <- foreach(SNum = SL, .combine = rbind, 
-                       .packages = c("foreach","reshape2","dplyr","magrittr","PortfolioAnalytics", "Rcpp"), 
+                       .packages = c("foreach","reshape2","dplyr","magrittr","Rcpp"), 
                        .noexport = c("simGrowthCpp")) %do% {
                          cat("Optimising site",SNum,"...\n")
                          SS.sum <- cleanData(SNum, Trees)
