@@ -48,6 +48,12 @@ SIBEC <- SIBEC[,-4] %>%
 SSPredFull <- fread("InputsGit/SunshineSSPred.csv") ##Import SS predictions from CCISS tool: must have columns MergedBGC, Source, SS_NoSpace, SSprob, SSCurrent, FuturePeriod, SiteNo
 SSPredFull <- SSPredFull[,c("MergedBGC", "Source", "SS_NoSpace", "SSprob", "SSCurrent", 
                           "FuturePeriod", "SiteNo")]
+
+##remove cases where not all timeperiods available
+temp <- SSPredFull[,.(Num = length(unique(FuturePeriod))), by = c("SiteNo","SSCurrent")]
+temp <- temp[Num == 3,-c("Num")]
+SSPredFull <- SSPredFull[temp,on = c("SiteNo","SSCurrent")]
+
 #selectBGC <- select.list(choices = sort(unique(SSPredAll$SSCurrent)), graphics = TRUE) ###Select BGC to run for
 #selectBGC <- "CDFmm"
 #SSPredAll <- SSPredAll[grep(selectBGC,SSPredAll$SSCurrent),]
@@ -248,6 +254,7 @@ outAll <- foreach(BGC = BGCs, .combine = c) %do% {
       efAll$RealRet <- efAll$RealRet/max(efAll$RealRet) ##standardise return
       maxSharpe <- efAll[efAll$Sharpe == max(efAll$Sharpe),-c("Return","Sharpe")]
       maxSharpe <- t(maxSharpe) %>% as.data.frame() %>% mutate(Spp = rownames(.)) %>% set_colnames(c("value","Spp"))
+      maxSharpe$SSCurrent <- selectBGC
       efAll <- efAll[,-c("Return","Sharpe")]
       efAll <- melt(efAll, id.vars = "Sd")
       
