@@ -103,6 +103,7 @@ def ef_weights_v2(returns, cov_matrix, minWt, maxWt, minTot): ##optType either m
             break
     
     efficients = []
+    min_risk = target[0]
     for ret in target:
         efficients.append(efficient_return(mean_returns, cov_matrix, ret, bndNew))
     ep_w = [x['x'] for x in efficients]
@@ -110,84 +111,38 @@ def ef_weights_v2(returns, cov_matrix, minWt, maxWt, minTot): ##optType either m
     w_df = pd.DataFrame(w_df)
     w_df.columns = sppUse
     ep_stdev = np.array([x['fun'] for x in efficients])
-#    ep_ret = [portfolio_return(x['x'], mean_returns, cov_matrix) for x in efficients]        
-#    ep_ret = np.array(ep_ret)
     ep_ret = np.array(target)
-    return(w_df,ep_stdev,ep_ret)
+    sharpe = (ep_ret-min_risk)/ep_stdev
+    return(w_df,ep_stdev,ep_ret,sharpe)
 
 
-###efficient frontier - main function in R
-def ef_weights(returns, cov_matrix, target, minWt, maxWt, minTot): ##optType either mean or stdev - main R function
-    spp = cov_matrix.columns
-    sppUse = spp
-    mean_returns = returns.mean()
-    bounds = set_bounds(minWt, maxWt, mean_returns)
-    bndNew = bounds
-    while(True): ###if any < minTot, loop through and remove
-        efficients = []
-        for ret in target:
-            efficients.append(efficient_return(mean_returns, cov_matrix, ret, bndNew))
-        ep_w = [x['x'] for x in efficients]
-        w_df = np.array(ep_w)
-        if(any(np.max(w_df, axis = 0) < minTot)):
-            sppUse = list(spp[np.max(w_df, axis = 0) > minTot])###remove spcies from covmat, returns, and bounds
-            cov_matrix = cov_matrix.loc[sppUse, sppUse]
-            mean_returns = mean_returns[sppUse]
-            indUse = [b for a,b in zip(spp, range(len(spp))) if a in sppUse]
-            bndNew = [bounds[i] for i in indUse]
-            
-        else:
-            break
-        
-    w_df = pd.DataFrame(w_df)
-    w_df.columns = sppUse
-    ep_optVal = [portfolio_volatility(x['x'], mean_returns, cov_matrix) for x in efficients]        
-    ep_optVal = np.array(ep_optVal)
-    
-    return(w_df,ep_optVal)
-
-
-#max_sharpe = max_sharpe_ratio(mean_returns, cov_matrix, risk_free_rate)
-#sdp, rp = portfolio_annualised_performance(max_sharpe['x'], mean_returns, cov_matrix)
-#max_sharpe_allocation = pd.DataFrame(max_sharpe.x,index=returns.columns,columns=['allocation'])
-#max_sharpe_allocation.allocation = [round(i*100,2)for i in max_sharpe_allocation.allocation]
-#max_sharpe_allocation = max_sharpe_allocation.T
-#
-#min_vol = min_variance(mean_returns, cov_matrix)
-#sdp_min, rp_min = portfolio_annualised_performance(min_vol['x'], mean_returns, cov_matrix)
-#min_vol_allocation = pd.DataFrame(min_vol.x,index=returns.columns,columns=['allocation'])
-#min_vol_allocation.allocation = [round(i*100,2)for i in min_vol_allocation.allocation]
-#min_vol_allocation = min_vol_allocation.T
-#
-#target = np.linspace(25, 5, 25)
-#efficient_portfolios = efficient_frontier(mean_returns, cov_matrix, target)
-#ep_w = [x['x'] for x in efficient_portfolios]
-#w_df = pd.DataFrame(ep_w)
-#w_df.columns = spp
-#w_df = w_df.set_index(target)
-#ep = [x['fun'] for x in efficient_portfolios]
-#plt.figure(figsize=(10, 7))
-#plt.plot(ep, target, linestyle='-.', color='black', label='efficient frontier')
-
-# def neg_sharpe_ratio(weights, mean_returns, cov_matrix, risk_free_rate): ###for maximising sharpe ration
-#     p_ret = np.sum(mean_returns*weights ) 
-#     p_var = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights)))
-#     return -(p_ret - risk_free_rate) / p_var
-# 
-# def max_sharpe_ratio(returns, cov_matrix, risk_free_rate): ##weights for max sharpe ratio
-#     mean_returns = returns.mean()
-#     num_assets = len(mean_returns)
-#     args = (mean_returns, cov_matrix, risk_free_rate)
-#     constraints = ({'type': 'eq', 'fun': lambda x: np.sum(x) - 1})
-#     bound = (0.0,1.0)
-#     bounds = tuple(bound for asset in range(num_assets))
-#     result = sco.minimize(neg_sharpe_ratio, num_assets*[1./num_assets,], args=args,
-#                         method='SLSQP', bounds=bounds, constraints=constraints)
-#     r2 = pd.DataFrame(result.x,index=cov_matrix.columns,columns=['Weight'])
-#     return r2.T
-# 
-#else:
+####efficient frontier - main function in R
+#def ef_weights(returns, cov_matrix, target, minWt, maxWt, minTot): ##optType either mean or stdev - main R function
+#    spp = cov_matrix.columns
+#    sppUse = spp
+#    mean_returns = returns.mean()
+#    bounds = set_bounds(minWt, maxWt, mean_returns)
+#    bndNew = bounds
+#    while(True): ###if any < minTot, loop through and remove
 #        efficients = []
 #        for ret in target:
-#            efficients.append(efficient_stdev(mean_returns, cov_matrix, ret, bounds))
-#        ep_optVal = [portfolio_return(x['x'], mean_returns, cov_matrix) for x in efficients]
+#            efficients.append(efficient_return(mean_returns, cov_matrix, ret, bndNew))
+#        ep_w = [x['x'] for x in efficients]
+#        w_df = np.array(ep_w)
+#        if(any(np.max(w_df, axis = 0) < minTot)):
+#            sppUse = list(spp[np.max(w_df, axis = 0) > minTot])###remove spcies from covmat, returns, and bounds
+#            cov_matrix = cov_matrix.loc[sppUse, sppUse]
+#            mean_returns = mean_returns[sppUse]
+#            indUse = [b for a,b in zip(spp, range(len(spp))) if a in sppUse]
+#            bndNew = [bounds[i] for i in indUse]
+#            
+#        else:
+#            break
+#        
+#    w_df = pd.DataFrame(w_df)
+#    w_df.columns = sppUse
+#    ep_optVal = [portfolio_volatility(x['x'], mean_returns, cov_matrix) for x in efficients]        
+#    ep_optVal = np.array(ep_optVal)
+#    
+#    return(w_df,ep_optVal)
+
