@@ -156,6 +156,11 @@ SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.5,0.5,1,4),
 
 #Trees <- c("At","Bl","Cw","Fd","Hw","Lw","Pl","Py","Sx") ##set species to use in portfolio
 Trees <- c("Bl", "Bp", "Cw","Fd","Hm", "Hw","Lw","Pl","Py","Sx", "Ss", "Dr", "Mb") ##set species to use in portfolio Sunshine Coast test area
+##set tree colours
+myColours <- c("brown","red","pink", "orange","yellow","green","blue","magenta","darkgoldenrod","grey","purple",
+               "darkgreen","firebrick")
+names(myColours) <- levels(factor(Trees))
+colScale <- scale_fill_manual(name = "variable", values = myColours)
 nSpp <- length(Trees)
 treeList <- Trees
 ##set min and max weights for each species
@@ -171,19 +176,15 @@ minAccept <- 0.1 ##min acceptable weight in porfolio - if lower, will remove and
 Loop through BGCs and Subzones, output graphics and optimum weights
 
 ```{r full portfolio}
-#SSPredFull <- SSPredFull %>% filter (SSCurrent %like% '01')
+SSPredFull <- SSPredFull[grep("01",SSPredFull$SSCurrent),]
 SSPredFull$CurrBGC <- gsub("/.*","", SSPredFull$SSCurrent)
-
-
 
 BGCs <- unique(SSPredFull$CurrBGC)
 
-BGC <- "CDFmm"
 outAll <- foreach(BGC = BGCs, .combine = rbind) %do% {
   SSPredBGC <- SSPredFull[SSPredFull$CurrBGC == BGC,]
   SSList <- unique(SSPredBGC$SSCurrent)
-selectBGC <- "CDFmm/01"
-    SSout <- foreach(selectBGC = SSList, .combine = loopCombine) %do% {
+  SSout <- foreach(selectBGC = SSList, .combine = loopCombine) %do% {
     cat("########## Processing", selectBGC,"###################\n")
     SSPredAll <- SSPredFull[SSPredFull$SSCurrent == selectBGC,]
     
@@ -263,11 +264,7 @@ selectBGC <- "CDFmm/01"
       maxSharpe$SSCurrent <- selectBGC
       efAll <- efAll[,-c("Return","Sharpe")]
       efAll <- melt(efAll, id.vars = "Sd")
-      
-      
-      myColours <- c("brown","red","pink", "orange","yellow","green","blue","magenta","darkgoldenrod")
-      names(myColours) <- levels(factor(Trees))
-      colScale <- scale_fill_manual(name = "variable", values = myColours)
+    
       
       p1 <- ggplot(efAll[efAll$variable != "RealRet",])+
         geom_area(aes(x = Sd, y = value, fill = variable),size = 0.00001, col = "black", stat = "identity")+
@@ -282,8 +279,8 @@ selectBGC <- "CDFmm/01"
     }
     
   }
-  pdf(file = paste0(BGC,"_Portfolios.pdf"), width = 11, height = 10)
-  grid.arrange(grobs = SSout$Graph, ncol = 3)
+  pdf(file = paste0(BGC,"_Portfolios.pdf"), width = 6, height = 5)
+  grid.arrange(grobs = SSout$Graph, ncol = 1)
   dev.off()
   SSout$MaxS
 }
