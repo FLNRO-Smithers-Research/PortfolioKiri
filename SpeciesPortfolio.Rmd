@@ -154,7 +154,8 @@ Specify parameters...
 SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.5,0.5,1,4), 
                        "NoMort" = c(70,60,50,30)) ####ProbDead- out of 100 trees, how many will die each year at each suitability. NoMort- Percent of time no mortality
 
-Trees <- c("At","Bl","Cw","Fd","Hw","Lw","Pl","Py","Sx") ##set species to use in portfolio
+#Trees <- c("At","Bl","Cw","Fd","Hw","Lw","Pl","Py","Sx") ##set species to use in portfolio
+Trees <- c("Bl", "Bp", "Cw","Fd","Hm", "Hw","Lw","Pl","Py","Sx", "Ss", "Dr", "Mb") ##set species to use in portfolio Sunshine Coast test area
 nSpp <- length(Trees)
 treeList <- Trees
 ##set min and max weights for each species
@@ -170,20 +171,25 @@ minAccept <- 0.1 ##min acceptable weight in porfolio - if lower, will remove and
 Loop through BGCs and Subzones, output graphics and optimum weights
 
 ```{r full portfolio}
+#SSPredFull <- SSPredFull %>% filter (SSCurrent %like% '01')
 SSPredFull$CurrBGC <- gsub("/.*","", SSPredFull$SSCurrent)
+
+
+
 BGCs <- unique(SSPredFull$CurrBGC)
 
-
+BGC <- "CDFmm"
 outAll <- foreach(BGC = BGCs, .combine = rbind) %do% {
   SSPredBGC <- SSPredFull[SSPredFull$CurrBGC == BGC,]
   SSList <- unique(SSPredBGC$SSCurrent)
-  SSout <- foreach(selectBGC = SSList, .combine = loopCombine) %do% {
-    cat("########## Proccessing", selectBGC,"###################\n")
+selectBGC <- "CDFmm/01"
+    SSout <- foreach(selectBGC = SSList, .combine = loopCombine) %do% {
+    cat("########## Processing", selectBGC,"###################\n")
     SSPredAll <- SSPredFull[SSPredFull$SSCurrent == selectBGC,]
     
     SiteList <- unique(SSPredAll$SiteNo)
     SiteList <- rep(SiteList, each = round(15/length(SiteList)))
-    SSPredAll <- SSPredAll[SiteNo %in% SiteList & !is.na(SSPredAll$SSprob),]
+    SSPredAll <- SSPredAll[SSPredAll$SiteNo %in% SiteList & !is.na(SSPredAll$SSprob),]
     
     SL <- SiteList
     allSitesSpp <- foreach(SNum = SL, .combine = rbind, 
