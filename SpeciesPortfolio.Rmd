@@ -24,6 +24,7 @@ library(data.table)
 library(scales)
 library(tidyr)
 library(magrittr)
+library(ggthemes)
 ```
 
 Source functions from C and Py
@@ -146,6 +147,12 @@ combineList <- function(...) {##Combine multiple dataframe in foreach loop
   mapply(FUN = rbind, ..., SIMPLIFY=FALSE)
 }
 
+loopCombine <- function(a,b){
+  G <- c(a$Graph,b$Graph)
+  df <- rbind(a$MaxS,b$MaxS)
+  return(list(Graph = G, MaxS = df))
+}
+
 ```
 
 Specify parameters...
@@ -173,13 +180,13 @@ Loop through BGCs and Subzones, output graphics and optimum weights
 SSPredFull$CurrBGC <- gsub("/.*","", SSPredFull$SSCurrent)
 BGCs <- unique(SSPredFull$CurrBGC)
 
-outAll <- foreach(BGC = BGCs, .combine = c) %do% {
-  cat("########## Proccessing", BGC,"###################\n")
+
+outAll <- foreach(BGC = BGCs, .combine = rbind) %do% {
   SSPredBGC <- SSPredFull[SSPredFull$CurrBGC == BGC,]
   SSList <- unique(SSPredBGC$SSCurrent)
-  foreach(selectBGC = SSList, .combine = c) %do% {
+  SSout <- foreach(selectBGC = SSList, .combine = loopCombine) %do% {
     cat("########## Proccessing", selectBGC,"###################\n")
-    SSPredAll <- SSPredBGC[SSPredBGC$SSCurrent == selectBGC,]
+    SSPredAll <- SSPredFull[SSPredFull$SSCurrent == selectBGC,]
     
     SiteList <- unique(SSPredAll$SiteNo)
     SiteList <- rep(SiteList, each = round(15/length(SiteList)))
@@ -272,12 +279,18 @@ outAll <- foreach(BGC = BGCs, .combine = c) %do% {
         ggtitle(selectBGC)+
         theme_few()
       
-      list(Graph = p1, MaxS = maxSharpe)
+      list(Graph = list(p1), MaxS = maxSharpe)
     }
     
   }
+  pdf(file = paste0(BGC,"_Portfolios.pdf"), width = 11, height = 10)
+  grid.arrange(grobs = SSout$Graph, ncol = 3)
+  dev.off()
+  SSout$MaxS
 }
 
+MSWeights <- dcast(outAll,SSCurrent ~ Spp)
+fwrite(MSWeights, "PortfolioWeights.csv")
 ```
 
 Run optimisation (note this may take a bit)
