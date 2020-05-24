@@ -56,15 +56,7 @@ temp <- SSPredFull[,.(Num = length(unique(FuturePeriod))), by = c("SiteNo","SSCu
 temp <- temp[Num == 3,-c("Num")]
 SSPredFull <- SSPredFull[temp,on = c("SiteNo","SSCurrent")]
 
-#selectBGC <- select.list(choices = sort(unique(SSPredAll$SSCurrent)), graphics = TRUE) ###Select BGC to run for
-#selectBGC <- "CDFmm"
-#SSPredAll <- SSPredAll[grep(selectBGC,SSPredAll$SSCurrent),]
-
 SSPredSave <- SSPredFull
-#SSPredAll <- SSPredSave
-
-#SiteList <- unique(SSPredAll$SiteNo[grep("Ele",SSPredAll$SiteNo)]) ###select Elephant hill fire
-
 ```
 
 Function to clean and summarise SIBEC and CCISS data
@@ -198,7 +190,7 @@ outAll <- foreach(BGC = BGCs, .combine = rbind) %do% {
                        .packages = c("foreach","reshape2","dplyr","magrittr","Rcpp"), 
                        .noexport = c("simGrowthCpp")) %do% {
                          
-                         cat("Optimising site",SNum,"...\n")
+                         #cat("Optimising site",SNum,"...\n")
                          SS.sum <- cleanData(SNum, Trees)
                          
                          if(!is.null(SS.sum)){
