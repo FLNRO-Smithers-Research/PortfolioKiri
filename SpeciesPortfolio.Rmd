@@ -49,7 +49,7 @@ SIBEC <- SIBEC[,-4] %>%
 SSPredAll <- fread("InputsGit/FireSSPred.csv") ##Import SS predictions from CCISS tool: must have columns MergedBGC, Source, SS_NoSpace, SSprob, SSCurrent, FuturePeriod, SiteNo
 SSPredAll <- SSPredAll[,c("MergedBGC", "Source", "SS_NoSpace", "SSprob", "SSCurrent", 
                           "FuturePeriod", "SiteNo")]
-selectBGC <- select.list(choices = sort(unique(SSPredAll$SSCurrent)), graphics = TRUE) ###Select BGC to run for
+selectBGC <- "IDFdk1/01"#select.list(choices = sort(unique(SSPredAll$SSCurrent)), graphics = TRUE) ###Select BGC to run for
 SSPredAll <- SSPredAll[SSCurrent == selectBGC,]
 
 SSPredSave <- SSPredAll
