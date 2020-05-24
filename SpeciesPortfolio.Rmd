@@ -25,6 +25,7 @@ library(scales)
 library(tidyr)
 library(magrittr)
 library(ggthemes)
+library(flextable)
 ```
 
 Source functions from C and Py
@@ -291,6 +292,17 @@ outAll <- foreach(BGC = BGCs, .combine = rbind) %do% {
 
 MSWeights <- dcast(outAll,SSCurrent ~ Spp)
 fwrite(MSWeights, "PortfolioWeights.csv")
+```
+### Formatted table
+
+```{r table}
+MSWeights[MSWeights < 0.05] <- NA
+MSWeights <- MSWeights[,c(T,colSums(MSWeights[,-1], na.rm = T) > 0)]
+MSWeights[is.na(MSWeights)] <- 0
+cols <- c(names(MSWeights)[!names(MSWeights) %in% Trees],names(MSWeights)[names(MSWeights) %in% Trees])
+tab <- flextable(MSWeights, col_keys = cols)
+tab <- colformat_num(tab,j = cols[-1],digits = 2)
+tab
 ```
 
 Run optimisation (note this may take a bit)
