@@ -28,10 +28,12 @@ library(ggthemes)
 library(flextable)
 ```
 
-Source functions from C and Py
+
+Source functions from C and Py and CCISS
 ```{r read in  portfolio functions}
 sourceCpp("./CppFunctions/SimGrowth.cpp")
 source_python("./PythonFns/PortfolioOptimisation.py")
+source("CCISS_Fns.R")
 ```
 
 Load data
@@ -47,7 +49,14 @@ SIBEC <- fread("InputsGit/BartPredSI.csv") ###import SI data (currently from BAR
 SIBEC <- SIBEC[,-4] %>% 
   set_colnames(c("SS_NoSpace", "TreeSpp","MeanPlotSiteIndex"))
 
-SSPredFull <- fread("InputsGit/SunshineSSPred.csv") ##Import SS predictions from CCISS tool: must have columns MergedBGC, Source, SS_NoSpace, SSprob, SSCurrent, FuturePeriod, SiteNo
+### run CCISS function to predict Site Series
+load("./inputs/BGCv11_16VAR_SubZone_RFmodel.Rdata")
+Edatope <- fread("./InputsGit/Edatopic_v11_7.csv",data.table = F)
+rawDat <- fread("./inputs/SunshPts_90 GCMsMSY.csv",data.table = F)
+rawDat$ID2 <- gsub("(.*)[A-Z]$","\\1",rawDat$ID2) ##remove north/south
+SSPredFull <- CCISS_Spp(Y1 = rawDat,BGCmodel = BGCmodel,E1 = Edatope)
+
+#SSPredFull <- fread("InputsGit/SunshineSSPred.csv") ##Import SS predictions from CCISS tool: must have columns MergedBGC, Source, SS_NoSpace, SSprob, SSCurrent, FuturePeriod, SiteNo
 SSPredFull <- SSPredFull[,c("MergedBGC", "Source", "SS_NoSpace", "SSprob", "SSCurrent", 
                           "FuturePeriod", "SiteNo")]
 
@@ -156,10 +165,9 @@ SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.5,0.5,1,4),
 
 #Trees <- c("At","Bl","Cw","Fd","Hw","Lw","Pl","Py","Sx") ##set species to use in portfolio
 Trees <- c("Bl", "Bp", "Cw","Fd","Hm", "Hw","Lw","Pl","Py","Sx", "Ss", "Dr", "Mb") ##set species to use in portfolio Sunshine Coast test area
-##set tree colours
-myColours <- c("brown","red","pink", "orange","yellow","green","blue","magenta","darkgoldenrod","grey","purple",
-               "darkgreen","firebrick")
-names(myColours) <- levels(factor(Trees))
+myColours <- c("darkmagenta","darkorchid4","green4","gold","plum2","plum1","slategray4","dodgerblue2","darkorange2",
+          "mediumaquamarine","seagreen1","palevioletred1","palevioletred2")
+names(myColours) <- Trees
 colScale <- scale_fill_manual(name = "variable", values = myColours)
 nSpp <- length(Trees)
 treeList <- Trees
