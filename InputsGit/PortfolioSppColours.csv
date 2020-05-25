@@ -1,0 +1,44 @@
+TreeCode,Code,Use,EnglishName,HexColour
+Acb,POPUBAL,x,balsam poplar,#202020
+Act,POPUTRI,x,black cottonwood,#303030
+At,POPUTRE,x,trembling aspen,#404040
+Ba,ABIEAMA,x,amabilis fir,#00CC66
+Bg,ABIEGRA,x,grand fir,#4C9900
+Bl,ABIELAS,x,subalpine fir,#9933FF
+Bp,ABIEPRO,x,noble fir,#999900
+Cw,THUJPLI,x,western redcedar,#006600
+Dr,ALNURUB,x,red alder,#505050
+Ea,BETUNEO,x,Alaska paper birch,#606060
+Ep,BETUPAP,x,common paper birch,#707070
+Ew,BETUOCC,x,water birch,#808080
+Fd,PSEUMEN,x,Douglas-fir,#FFD601
+Fdc,PSEUMEN2,x,coast Douglas-fir,
+Fdi,PSEUMEN1,x,Rocky Mountain Douglas-fir,
+Gp,CORNNUT,x,western flowering dogwood,#FFFFFF
+Hm,TSUGMER,x,mountain hemlock,#D776FF
+Hw,TSUGHET,x,western hemlock,
+Jr,JUNISCO,x,Rocky Mountain juniper,
+La,LARILYA,x,subalpine larch,
+Lt,LARILAR,x,tamarack,
+Lw,LARIOCC,x,western larch,#FF3333
+Mb,ACERMAC,x,bigleaf maple,
+Mv,ACERCIR,x,vine maple,
+Pa,PINUALB,x,whitebark pine,
+Pf,PINUFLE,x,limber pine,
+Pj,PINUBAN,x,jack pine,
+Pl,PINUCON,x,lodgepole pine,#005FCB
+Plc,PINUCON1,x,shore pine,
+Pli,PINUCON2,x,lodgepole pine,
+Pw,PINUMON,x,western white pine,
+Py,PINUPON,x,ponderosa pine,#F3861A
+Qg,QUERGAR,x,Garry oak,#FFFF66
+Ra,ARBUMEN,x,arbutus,
+Sb,PICEMAR,x,black spruce,
+Se,PICEENG,x,Engelmann spruce,
+Ss,PICESIT,x,Sitka spruce,#DA523E
+Sw,PICEGLA,x,white spruce,
+Sx,PICEENE,x,interior spruce,#ACEBF7
+Sxs,PICEXLU,x,hybrid Sitka spruce,
+Tw,TAXUBRE,x,western yew,
+Up,MALUFUS,x,Pacific crab apple,
+Yc,CHAMNOO,x,yellow-cedar,#FFFF33

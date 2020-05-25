@@ -68,6 +68,19 @@ SSPredFull <- SSPredFull[temp,on = c("SiteNo","SSCurrent")]
 SSPredSave <- SSPredFull
 ```
 
+Colour development...
+
+```{r colours}
+cols <- fread("./InputsGit/PortfolioSppColours.csv")
+cols <- cols[HexColour != "",]
+myPal <- cols$HexColour
+names(myPal) <- cols$TreeCode
+
+
+library(unikn)
+seecol(myPal, hex = T, rgb = F)
+```
+
 Function to clean and summarise SIBEC and CCISS data
 ```{r CCISS predictions}
 ##function to clean data and summarise 
