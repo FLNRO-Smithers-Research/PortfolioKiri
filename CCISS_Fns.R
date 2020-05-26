@@ -26,28 +26,6 @@ addVars <- function(dat){
 }
 
 CCISS_cbst <- function(Y1,BGCmodel){
- Y1 <- addVars(Y1)
-  
-  vars <- attr(BGCmodel$terms,"term.labels")
-  varList = c("Model", "SiteNo", "BGC", vars)
-  colnames (Y1) [1:3] = c("Model", "SiteNo", "BGC")
-  Y1=Y1[,varList]
-  
-  Y1.sub$BGC <- as.factor(Y1.sub$BGC)
-  
-  ##Predict future subzones######
-  Y1.sub$BGC.pred <- predict(BGCmodel, Y1.sub[,-c(1:3)]) 
-  
-  Y1.sub <- separate(Y1.sub, Model, into = c("Model","Scenario","FuturePeriod"), sep = "_", remove = T)
-  Y1.sub$FuturePeriod <- gsub(".gcm","",Y1.sub$FuturePeriod)
-  CBSTdat <- Y1.sub[,c("Model","Scenario","FuturePeriod","SiteNo","BGC","BGC.pred")]
-  CBSTdat$Model <- paste(CBSTdat$Model,CBSTdat$Scenario,sep = "_")
-  CBSTdat <- CBSTdat[,-2]
-  colnames(CBSTdat)[1] <- "GCM"
-  return(CBSTdat)
-}
-
-CCISS_Spp <- function(Y1,BGCmodel,E1){
   Y1 <- addVars(Y1)
   
   vars <- attr(BGCmodel$terms,"term.labels")
@@ -58,7 +36,29 @@ CCISS_Spp <- function(Y1,BGCmodel,E1){
   Y1$BGC <- as.factor(Y1$BGC)
   
   ##Predict future subzones######
-  Y1$BGC.pred <- predict(BGCmodel, Y1[,-c(1:3)]) 
+  Y1$BGC.pred <- predict(BGCmodel, Y1.sub[,-c(1:3)]) 
+  
+  Y1 <- separate(Y1, Model, into = c("Model","Scenario","FuturePeriod"), sep = "_", remove = T)
+  Y1$FuturePeriod <- gsub(".gcm","",Y1$FuturePeriod)
+  CBSTdat <- Y1[,c("Model","Scenario","FuturePeriod","SiteNo","BGC","BGC.pred")]
+  CBSTdat$Model <- paste(CBSTdat$Model,CBSTdat$Scenario,sep = "_")
+  CBSTdat <- CBSTdat[,-2]
+  colnames(CBSTdat)[1] <- "GCM"
+  return(CBSTdat)
+}
+
+CCISS_Spp <- function(Y1,BGCmodel,E1){
+  Y1 <- addVars(Y1)
+  
+  vars <- BGCmodel[["forest"]][["independent.variable.names"]]
+  varList = c("Model", "SiteNo", "BGC", vars)
+  colnames (Y1) [1:3] = c("Model", "SiteNo", "BGC")
+  Y1=Y1[,varList]
+  
+  Y1$BGC <- as.factor(Y1$BGC)
+  
+  ##Predict future subzones######
+  Y1$BGC.pred <- predict(BGCmodel, Y1[,-c(1:3)])[['predictions']]
   
   Y1 <- separate(Y1, Model, into = c("GCM","Scenario","FuturePeriod"), sep = "_", remove = T)
   Y1$FuturePeriod <- gsub(".gcm","",Y1$FuturePeriod)
