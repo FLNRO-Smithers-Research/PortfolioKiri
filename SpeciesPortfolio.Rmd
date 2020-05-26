@@ -50,8 +50,8 @@ SIBEC <- SIBEC[,-4] %>%
   set_colnames(c("SS_NoSpace", "TreeSpp","MeanPlotSiteIndex"))
 
 ### run CCISS function to predict Site Series
-load("./inputs/BGCv11_16VAR_SubZone_RFmodel.Rdata")
-Edatope <- fread("./InputsGit/Edatopic_v11_7.csv",data.table = F)
+load("./inputs/WNAv11_35_VAR_SubZone_ranger.Rdata")
+Edatope <- fread("./InputsGit/Edatopic_v11_20.csv",data.table = F)
 rawDat <- fread("./inputs/SunshPts_90 GCMsMSY.csv",data.table = F)
 rawDat$ID2 <- gsub("(.*)[A-Z]$","\\1",rawDat$ID2) ##remove north/south
 SSPredFull <- CCISS_Spp(Y1 = rawDat,BGCmodel = BGCmodel,E1 = Edatope)
