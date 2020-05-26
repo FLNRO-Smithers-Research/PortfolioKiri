@@ -6,15 +6,27 @@ require(dplyr)
 require(reshape2)
 library(doParallel)
 library(tidyr)
+require(ranger)
+
+addVars <- function(dat){
+  dat$PPT_MJ <- dat$PPT05 + dat$PPT06  # MaY/June precip
+  dat$PPT_JAS <- dat$PPT07 + dat$PPT08 + dat$PPT09  # July/Aug/Sept precip
+  dat$PPT.dormant <- dat$PPT_at + dat$PPT_wt  # for calculating spring deficit
+  dat$CMD.def <- 500 - (dat$PPT.dormant)  # start of growing season deficit original value was 400 but 500 seems better
+  dat$CMD.def[dat$CMD.def < 0] <- 0  #negative values set to zero = no deficit
+  dat$CMDMax <- dat$CMD07
+  dat$CMD.total <- dat$CMD.def + dat$CMD
+  dat$CMD.grow <- dat$CMD05 + dat$CMD06 +dat$CMD07 +dat$CMD08 +dat$CMD09
+  dat$DD5.grow <- dat$DD5_05 + dat$DD5_06 + dat$DD5_07 + dat$DD5_08 + dat$DD5_09
+  dat$CMDMax <- dat$CMD07 # add in so not removed below
+  dat$DDgood <- dat$DD5 - dat$DD18
+  dat$DDnew <- (dat$DD5_05 + dat$DD5_06 +dat$DD5_07  + dat$DD5_08)  - (dat$DD18_05 + dat$DD18_06 +dat$DD18_07 +dat$DD18_08)
+  dat$TmaxJuly <- dat$Tmax07
+  return(dat)
+}
 
 CCISS_cbst <- function(Y1,BGCmodel){
-  Y1$PPT_MJ <- Y1$PPT05 + Y1$PPT06 # MaY/June precip
-  Y1$PPT_JAS <- Y1$PPT07 + Y1$PPT08 + Y1$PPT09 # July/Aug/Sept precip
-  Y1$PPT.dormant <- Y1$PPT_at + Y1$PPT_wt # for calculating spring deficit
-  Y1$CMD.def <- 500 - (Y1$PPT.dormant)# start of growing season deficit original value was 400 but 500 seems better
-  Y1$CMD.def [Y1$CMD.def < 0] <- 0 #negative values set to zero = no deficit
-  Y1$CMDMax <- Y1$CMD07
-  Y1$CMD.total <- Y1$CMD.def + Y1$CMD
+ Y1 <- addVars(Y1)
   
   vars <- attr(BGCmodel$terms,"term.labels")
   varList = c("Model", "SiteNo", "BGC", vars)
@@ -36,13 +48,7 @@ CCISS_cbst <- function(Y1,BGCmodel){
 }
 
 CCISS_Spp <- function(Y1,BGCmodel,E1){
-  Y1$PPT_MJ <- Y1$PPT05 + Y1$PPT06 # MaY/June precip
-  Y1$PPT_JAS <- Y1$PPT07 + Y1$PPT08 + Y1$PPT09 # July/Aug/Sept precip
-  Y1$PPT.dormant <- Y1$PPT_at + Y1$PPT_wt # for calculating spring deficit
-  Y1$CMD.def <- 500 - (Y1$PPT.dormant)# start of growing season deficit original value was 400 but 500 seems better
-  Y1$CMD.def [Y1$CMD.def < 0] <- 0 #negative values set to zero = no deficit
-  Y1$CMDMax <- Y1$CMD07
-  Y1$CMD.total <- Y1$CMD.def + Y1$CMD
+  Y1 <- addVars(Y1)
   
   vars <- attr(BGCmodel$terms,"term.labels")
   varList = c("Model", "SiteNo", "BGC", vars)
