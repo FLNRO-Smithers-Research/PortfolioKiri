@@ -66,17 +66,17 @@ CCISS_Spp <- function(Y1,BGCmodel,E1){
   
   #E1 <-fread("./InputsGit/Edatopic_v11_7.csv")
   
-  E1 <- E1[,-c(5)]
+  E1 <- E1[,-c(7:12)]
   E1 <- unique(E1)
   
   ###create list of focal BGCs & edatopic space
   e1 <- unique(Y1$BGC)
-  edatopic1 <- E1[E1$MergedBGC %in% e1,]
+  edatopic1 <- E1[E1$BGC %in% e1,]
   edatopic1$Codes[edatopic1$Codes == ""] <- NA
   
   ###create list of predicted BGCs and edatopic space
   e2 <- unique(Y1$BGC.pred)
-  edatopic2 <- E1[E1$MergedBGC %in% e2,]
+  edatopic2 <- E1[E1$BGC %in% e2,]
   edatopic2$Codes[edatopic2$Codes == ""] <- NA
   
   ##calculate BGC proportion
@@ -96,8 +96,8 @@ CCISS_Spp <- function(Y1,BGCmodel,E1){
   BGClist = unique(Y3.sub1$BGC)
   FuturePeriod.list <- unique(Y3.sub1$FuturePeriod)
   BGCfutures.list <- unique(Y3.sub1$BGC.pred) ### to use later on to limit the site series
-  BGCfocalE <- edatopic1[edatopic1$MergedBGC %in% Y3.sub1$BGC  ,] ### extracts edatopic space for BGC focal of SiteNo
-  BGCfutureE <- edatopic2[edatopic2$MergedBGC %in% Y3.sub1$BGC.pred  ,] #extracts edatopic info only for predicted BGCs
+  BGCfocalE <- edatopic1[edatopic1$BGC %in% Y3.sub1$BGC  ,] ### extracts edatopic space for BGC focal of SiteNo
+  BGCfutureE <- edatopic2[edatopic2$BGC %in% Y3.sub1$BGC.pred  ,] #extracts edatopic info only for predicted BGCs
   Y3.sub1$SiteNo <- as.character(Y3.sub1$SiteNo)
   SiteNo.list = unique(Y3.sub1$SiteNo)
   
@@ -120,8 +120,8 @@ CCISS_Spp <- function(Y1,BGCmodel,E1){
       Y3.siteno <- as.list(unique (Y3.each$SiteNo))
       Y3.BGC <- as.list(unique(Y3.each$BGC))
       Y3.BGC.pred<- unique(Y3.each$BGC.pred)
-      BGCfocalE <- edatopic1[edatopic1$MergedBGC %in% Y3.BGC  , ] ### extracts edatopic space for BGC focal of SiteNo
-      BGCfutureE <- edatopic2[edatopic2$MergedBGC %in% Y3.BGC.pred  , ] #extracts edatopic info only for predicted BGCs
+      BGCfocalE <- edatopic1[edatopic1$BGC %in% Y3.BGC  , ] ### extracts edatopic space for BGC focal of SiteNo
+      BGCfutureE <- edatopic2[edatopic2$BGC %in% Y3.BGC.pred  , ] #extracts edatopic info only for predicted BGCs
       
       Y3.SSlist = as.list(unique(BGCfocalE$SS_NoSpace))
       
@@ -133,7 +133,7 @@ CCISS_Spp <- function(Y1,BGCmodel,E1){
         ##select site series only with some edatopic overlap with SSfocal
         
         SSfutureE <- BGCfutureE[BGCfutureE$Edatopic %in% SSfocalE,]
-        futureZones <- unique(SSfutureE$MergedBGC)
+        futureZones <- unique(SSfutureE$BGC)
         futureSS.names <- unique(SSfutureE$SS_NoSpace)
         if(length(SSfutureE$Edatopic) > 0){
           
@@ -142,7 +142,7 @@ CCISS_Spp <- function(Y1,BGCmodel,E1){
           
           ##match site series within each projected subzone
           futureSS <- foreach(futSS = futureZones, .combine = rbind) %do% {
-            dat <- SSfuture[SSfuture$MergedBGC == futSS,]
+            dat <- SSfuture[SSfuture$BGC == futSS,]
             fut <- dat[dat$Edatopic %in% SSfocal$Edatopic,]
             if(any(fut$Codes[!is.na(fut$Codes)] %in% SSfocal$Codes[!is.na(SSfocal$Codes)]) & (length(fut$Codes[!is.na(fut$Codes)])/length(fut$Edatopic)) > 0.1){###Are there matchin special edatopic cells?
               oldSp <- unique(SSfocal$Codes[!is.na(SSfocal$Codes)])
@@ -171,14 +171,14 @@ CCISS_Spp <- function(Y1,BGCmodel,E1){
           if(length(futureSS) > 0){
             futureSS <- futureSS[futureSS$alloverlap > 0,] ###Adjust this to remove low overlap SS
             Y3.each <- unique(Y3.each)
-            Y3.each <- Y3.each[Y3.each$BGC.pred %in% futureSS$MergedBGC,] ###Remove predictions with no overlap and recalculate
+            Y3.each <- Y3.each[Y3.each$BGC.pred %in% futureSS$BGC,] ###Remove predictions with no overlap and recalculate
             Y3.each$BGC.prop <- Y3.each$BGC.prop/sum(Y3.each$BGC.prop)
-            futureSS <- merge(futureSS, Y3.each[,c("BGC.pred","BGC.prop")], by.x = "MergedBGC", by.y = "BGC.pred", all.x = TRUE)
+            futureSS <- merge(futureSS, Y3.each[,c("BGC.pred","BGC.prop")], by.x = "BGC", by.y = "BGC.pred", all.x = TRUE)
             
             
             ####Calculate the SS ratio
-            SSoverlap <- summaryBy(alloverlap~MergedBGC, data=futureSS, id = 'SS_NoSpace', FUN=c(sum))
-            futureSS$overlaptot<- SSoverlap$alloverlap.sum[match(futureSS$MergedBGC, SSoverlap$MergedBGC )]
+            SSoverlap <- summaryBy(alloverlap~BGC, data=futureSS, id = 'SS_NoSpace', FUN=c(sum))
+            futureSS$overlaptot<- SSoverlap$alloverlap.sum[match(futureSS$BGC, SSoverlap$BGC )]
             futureSS$SSratio <- futureSS$alloverlap/futureSS$overlaptot
     
             ####Calculated the overall site series probability
@@ -201,7 +201,7 @@ CCISS_Spp <- function(Y1,BGCmodel,E1){
     } #For each year
     
   } # for all
-  
-  return(SiteNo.suit)
+  stopCluster(coreNo)
+  return(SiteNo.suit[!is.na(SiteNo.suit$SSprob),])
 }
 
