@@ -38,6 +38,8 @@ source("CCISS_Fns.R")
 
 Load data
 ```{r load species data}
+##Set drive with cloud data
+cloud_dir <- "C:/users/whmacken/Sync/CCISS_data/"
 ###Read in data
 SuitTable <- fread("InputsGit/Feasibility_v11_21.csv") ##tree spp suitability
 SuitTable <- unique(SuitTable)
@@ -50,7 +52,7 @@ SIBEC <- SIBEC[,-4] %>%
   set_colnames(c("SS_NoSpace", "TreeSpp","MeanPlotSiteIndex"))
 
 ### run CCISS function to predict Site Series
-load("./inputs/WNAv11_35_VAR_SubZone_ranger.Rdata")
+load(paste0(cloud_dir, "WNAv11_35_VAR_SubZone_ranger.Rdata"))
 Edatope <- fread("./InputsGit/Edatopic_v11_20.csv",data.table = F)
 rawDat <- fread("./inputs/SunshPts_90 GCMsMSY.csv",data.table = F)
 rawDat$ID2 <- gsub("(.*)[A-Z]$","\\1",rawDat$ID2) ##remove north/south
