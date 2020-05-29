@@ -61,6 +61,8 @@ rawDat$ID2 <- gsub("(.*)[A-Z]$","\\1",rawDat$ID2) ##remove north/south
 CCISSPred <- CCISS_Spp(Y1 = rawDat,BGCmodel = BGCmodel,E1 = Edatope)
 SSPredFull <- CCISSPred[[1]]
 colnames(SSPredFull)[1] <- "MergedBGC"
+SSPredFull <- SSPredFull[grep("01",SSPredFull$SSCurrent),]
+SSPredFull$CurrBGC <- gsub("/.*","", SSPredFull$SSCurrent)
 
 #SSPredFull <- fread("InputsGit/SunshineSSPred.csv") ##Import SS predictions from CCISS tool: must have columns MergedBGC, Source, SS_NoSpace, SSprob, SSCurrent, FuturePeriod, SiteNo
 SSPredFull <- SSPredFull[,c("MergedBGC", "Source", "SS_NoSpace", "SSprob", "SSCurrent", 
@@ -98,6 +100,24 @@ gr <- foreach(unit = unique(BGCPred$BGC), .combine = c) %do% {
 }
 
 grid.arrange(grobs = gr, ncol = 3)
+```
+
+Investigate SI for main species
+
+```{r SI_check, fig.width = 10, fig.height = 12}
+gr <- foreach(unit = unique(SSPredFull$SSCurrent),.combine = c) %do% {
+  sub <- SSPredFull[SSCurrent == unit,]
+  sub <- SIBEC[sub, on = "SS_NoSpace"]
+  sub <- sub[,.(SI = weighted.mean(MeanPlotSiteIndex,SSprob)), by = .(FuturePeriod, TreeSpp)]
+  
+  p1 <- ggplot(sub, aes(x = TreeSpp, y = SI, fill = FuturePeriod))+
+    geom_bar(stat = "identity", position = "dodge")+
+    theme_few()+
+    ggtitle(unit)
+  list(p1)
+}
+
+grid.arrange(grobs = gr, ncol = 2)
 ```
 
 Colour development...
@@ -232,8 +252,7 @@ minAccept <- 0.1 ##min acceptable weight in porfolio - if lower, will remove and
 Loop through BGCs and Subzones, output graphics and optimum weights
 
 ```{r full portfolio}
-SSPredFull <- SSPredFull[grep("01",SSPredFull$SSCurrent),]
-SSPredFull$CurrBGC <- gsub("/.*","", SSPredFull$SSCurrent)
+
 
 BGCs <- unique(SSPredFull$CurrBGC)
 
