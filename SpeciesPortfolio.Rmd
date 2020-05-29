@@ -39,7 +39,8 @@ source("CCISS_Fns.R")
 Load data
 ```{r load species data}
 ##Set drive with cloud data
-cloud_dir <- "C:/users/whmacken/Sync/CCISS_data/"
+cloud_dir_will <- "C:/users/whmacken/Sync/CCISS_data/"
+cloud_dir_kiri <- "C:/Users/kirid/Sync/CCISS_data/"
 ###Read in data
 SuitTable <- fread("InputsGit/Feasibility_v11_21.csv") ##tree spp suitability
 SuitTable <- unique(SuitTable)
@@ -52,13 +53,13 @@ SIBEC <- fread("InputsGit/PredSI_May2020.csv") ###import SI data (currently from
 SIBEC <- SIBEC[,c("SS_NoSpace","Spp","SIPred")] %>% set_colnames(c("SS_NoSpace","TreeSpp","MeanPlotSiteIndex"))
 
 ### run CCISS function to predict Site Series
-<<<<<<< HEAD
-load(paste0(cloud_dir, "WNAv11_35_VAR_SubZone_ranger.Rdata"))
+load(paste0(cloud_dir_kiri, "WNAv11_35_VAR_SubZone_ranger.Rdata"))
 
 Edatope <- fread("./InputsGit/Edatopic_v11_20.csv",data.table = F)
-rawDat <- fread("../../Sync/CCISS_data/PortfolioFiles/SunshPts_90 GCMsMSY.csv",data.table = F)
+rawDat <- fread(paste0(cloud_dir_kiri,"PortfolioFiles/SunshPts_90 GCMsMSY.csv"),data.table = F)
 rawDat$ID2 <- gsub("(.*)[A-Z]$","\\1",rawDat$ID2) ##remove north/south
-SSPredFull <- CCISS_Spp(Y1 = rawDat,BGCmodel = BGCmodel,E1 = Edatope)
+CCISSPred <- CCISS_Spp(Y1 = rawDat,BGCmodel = BGCmodel,E1 = Edatope)
+SSPredFull <- CCISSPred[[1]]
 colnames(SSPredFull)[1] <- "MergedBGC"
 
 #SSPredFull <- fread("InputsGit/SunshineSSPred.csv") ##Import SS predictions from CCISS tool: must have columns MergedBGC, Source, SS_NoSpace, SSprob, SSCurrent, FuturePeriod, SiteNo
@@ -72,6 +73,31 @@ temp <- temp[Num == 3,-c("Num")]
 SSPredFull <- SSPredFull[temp,on = c("SiteNo","SSCurrent")]
 
 SSPredSave <- SSPredFull
+```
+
+Investigate BGC Predictions from CCISS
+
+```{r BGC_plot, fig.width=10, fig.height=8}
+BGCPred <- as.data.table(CCISSPred[[2]])
+BGCPred <- BGCPred[,.(Num = sum(Pred.len)), keyby = .(FuturePeriod,BGC,BGC.pred)]
+totNum <- BGCPred[,.(Total = sum(Num)), keyby = .(FuturePeriod,BGC)]
+BGCPred <- totNum[BGCPred]
+BGCPred[,Prop := Num/Total]
+
+period <- 2025
+BGCPred <- BGCPred[FuturePeriod == period & Prop > 0.05,]
+
+gr <- foreach(unit = unique(BGCPred$BGC), .combine = c) %do% {
+  temp <- BGCPred[BGC == unit,]
+  p1 <- ggplot(temp, aes(x = BGC.pred, y = Prop, fill = BGC.pred))+
+  geom_bar(stat = 'identity', position = "dodge")+
+    ggtitle(unit)+
+    theme_few()+
+    theme(axis.text.x = element_blank())
+  list(p1)
+}
+
+grid.arrange(grobs = gr, ncol = 3)
 ```
 
 Colour development...

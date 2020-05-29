@@ -28,7 +28,7 @@ addVars <- function(dat){
 CCISS_cbst <- function(Y1,BGCmodel){
   Y1 <- addVars(Y1)
   
-  vars <- attr(BGCmodel$terms,"term.labels")
+  vars <- BGCmodel[["forest"]][["independent.variable.names"]]
   varList = c("Model", "SiteNo", "BGC", vars)
   colnames (Y1) [1:3] = c("Model", "SiteNo", "BGC")
   Y1=Y1[,varList]
@@ -36,7 +36,7 @@ CCISS_cbst <- function(Y1,BGCmodel){
   Y1$BGC <- as.factor(Y1$BGC)
   
   ##Predict future subzones######
-  Y1$BGC.pred <- predict(BGCmodel, Y1.sub[,-c(1:3)]) 
+  Y1$BGC.pred <- predict(BGCmodel, Y1[,-c(1:3)])[['predictions']]
   
   Y1 <- separate(Y1, Model, into = c("Model","Scenario","FuturePeriod"), sep = "_", remove = T)
   Y1$FuturePeriod <- gsub(".gcm","",Y1$FuturePeriod)
@@ -202,6 +202,6 @@ CCISS_Spp <- function(Y1,BGCmodel,E1){
     
   } # for all
   stopCluster(coreNo)
-  return(SiteNo.suit[!is.na(SiteNo.suit$SSprob),])
+  return(list(SiteNo.suit[!is.na(SiteNo.suit$SSprob),],Pred.len))
 }
 
