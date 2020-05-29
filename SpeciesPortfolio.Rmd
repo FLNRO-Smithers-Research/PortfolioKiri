@@ -252,11 +252,11 @@ minAccept <- 0.1 ##min acceptable weight in porfolio - if lower, will remove and
 Loop through BGCs and Subzones, output graphics and optimum weights
 
 ```{r full portfolio}
-
+future <- FALSE ## change to false to create portfolio with just current data
 
 BGCs <- unique(SSPredFull$CurrBGC)
 
-outAll <- foreach(BGC = BGCs, .combine = rbind) %do% {
+outAll <- foreach(BGC = BGCs, .combine = loopCombine) %do% {
   SSPredBGC <- SSPredFull[CurrBGC == BGC,]
   SSList <- unique(SSPredBGC$SSCurrent)
   SSout <- foreach(selectBGC = SSList, .combine = loopCombine) %do% {
@@ -274,6 +274,13 @@ outAll <- foreach(BGC = BGCs, .combine = rbind) %do% {
                          
                          #cat("Optimising site",SNum,"...\n")
                          SS.sum <- cleanData(SNum, Trees)
+                         
+                         if(!future){
+                           tempSI <- SS.sum$MeanSI[SS.sum$FuturePeriod == 2000]
+                           tempSuit <- SS.sum$MeanSuit[SS.sum$FuturePeriod == 2000]
+                           SS.sum$MeanSI <- rep(tempSI, each = 4)
+                           SS.sum$MeanSuit <- rep(tempSuit, each = 4)
+                         }
                          
                          if(!is.null(SS.sum)){
                            annualDat <- data.frame("Year" = seq(2000,2100,1))
@@ -354,18 +361,25 @@ outAll <- foreach(BGC = BGCs, .combine = rbind) %do% {
     }
     
   }
-  pdf(file = paste0(BGC,"_Portfolios.pdf"), width = 6, height = 5)
-  grid.arrange(grobs = SSout$Graph, ncol = 1)
-  dev.off()
-  SSout$MaxS
+  # pdf(file = paste0(BGC,"_Portfolios.pdf"), width = 6, height = 5)
+  # grid.arrange(grobs = SSout$Graph, ncol = 1)
+  # dev.off()
 }
 
-MSWeights <- dcast(outAll,SSCurrent ~ Spp)
-fwrite(MSWeights, "PortfolioWeights.csv")
+
 ```
+
+Plot portfolios
+
+```{r plot_pf, fig.height = 10, fig.width = 12}
+grid.arrange(grobs = outAll$Graph, ncol = 3)
+```
+
+
 ### Formatted table
 
 ```{r table}
+MSWeights <- dcast(outAll$MaxS,SSCurrent ~ Spp)
 MSWeights[MSWeights < 0.05] <- NA
 MSWeights <- MSWeights[,c(T,colSums(MSWeights[,-1], na.rm = T) > 0)]
 MSWeights[is.na(MSWeights)] <- 0
