@@ -66,7 +66,7 @@ SSPredFull$CurrBGC <- gsub("/.*","", SSPredFull$SSCurrent)
 
 #SSPredFull <- fread("InputsGit/SunshineSSPred.csv") ##Import SS predictions from CCISS tool: must have columns MergedBGC, Source, SS_NoSpace, SSprob, SSCurrent, FuturePeriod, SiteNo
 SSPredFull <- SSPredFull[,c("MergedBGC", "Source", "SS_NoSpace", "SSprob", "SSCurrent", 
-                          "FuturePeriod", "SiteNo")]
+                          "FuturePeriod", "SiteNo","CurrBGC")]
 
 ##remove cases where not all timeperiods available
 SSPredFull <- as.data.table(SSPredFull)
