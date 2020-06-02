@@ -10,7 +10,7 @@ output:
 This script uses an adaptation of Markowitz portolio method to calculate the optimal mix of tree species, based on modelling species growth using site predictions from the CCISS tool, and estimating SIBEC data. The main optimisation functions are sourced from a C++ and Python script.
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
 require(dplyr)
 require(ggplot2)
 require(MASS)
