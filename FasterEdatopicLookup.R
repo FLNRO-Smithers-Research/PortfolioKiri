@@ -19,6 +19,8 @@ setkey(new, SiteNo,FuturePeriod,BGC,BGC.pred,SS_NoSpace,SS.pred)
 new <- new[complete.cases(new),]
 SS.out <- new[,.(SS.prob = .N), 
               keyby = .(SiteNo,FuturePeriod,BGC,BGC.pred,SS_NoSpace,SS.pred)]
-SS.out2 <- new[,.(SS.Curr = .N, BGC = unique(BGC.prop)), keyby = .(SiteNo,FuturePeriod,BGC,BGC.pred,SS_NoSpace)]
+SS.out2 <- new[,.(SS.Curr = .N, BGC = unique(BGC.prop)), 
+               keyby = .(SiteNo,FuturePeriod,BGC,BGC.pred,SS_NoSpace)]
 comb <- SS.out2[SS.out]
 comb[,SSProb := (SS.prob/SS.Curr)*BGC.1]
+comb <- comb[grep("01",comb$SS_NoSpace),]
