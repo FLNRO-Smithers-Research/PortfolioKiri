@@ -252,7 +252,7 @@ minAccept <- 0.1 ##min acceptable weight in porfolio - if lower, will remove and
 Loop through BGCs and Subzones, output graphics and optimum weights
 
 ```{r full portfolio}
-future <- FALSE ## change to false to create portfolio with just current data
+future <- TRUE ## change to false to create portfolio with just current data
 
 BGCs <- unique(SSPredFull$CurrBGC)
 
@@ -342,6 +342,7 @@ outAll <- foreach(BGC = BGCs, .combine = loopCombine) %do% {
       efAll <- efAll[complete.cases(efAll),]
       efAll$RealRet <- efAll$RealRet/max(efAll$RealRet) ##standardise return
       maxSharpe <- efAll[efAll$Sharpe == max(efAll$Sharpe),-c("Return","Sharpe")]
+      maxSPos <- maxSharpe$Sd
       maxSharpe <- t(maxSharpe) %>% as.data.frame() %>% mutate(Spp = rownames(.)) %>% set_colnames(c("value","Spp"))
       maxSharpe$SSCurrent <- selectBGC
       efAll <- efAll[,-c("Return","Sharpe")]
@@ -351,6 +352,7 @@ outAll <- foreach(BGC = BGCs, .combine = loopCombine) %do% {
       p1 <- ggplot(efAll[efAll$variable != "RealRet",])+
         geom_area(aes(x = Sd, y = value, fill = variable),size = 0.00001, col = "black", stat = "identity")+
         colScale +
+        geom_vline(xintercept = maxSPos)+
         geom_line(data = efAll[efAll$variable == "RealRet",], aes(x = Sd, y = value))+
         scale_x_reverse() +
         xlab("Volatility")+
