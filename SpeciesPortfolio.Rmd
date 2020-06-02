@@ -53,10 +53,10 @@ SIBEC <- fread("InputsGit/PredSI_May2020.csv") ###import SI data (currently from
 SIBEC <- SIBEC[,c("SS_NoSpace","Spp","SIPred")] %>% set_colnames(c("SS_NoSpace","TreeSpp","MeanPlotSiteIndex"))
 
 ### run CCISS function to predict Site Series
-load(paste0(cloud_dir_kiri, "WNAv11_35_VAR_SubZone_ranger.Rdata"))
+load(paste0(cloud_dir_will, "WNAv11_35_VAR_SubZone_ranger.Rdata"))
 
 Edatope <- fread("./InputsGit/Edatopic_v11_20.csv",data.table = F)
-rawDat <- fread(paste0(cloud_dir_kiri,"PortfolioFiles/SunshPts_90 GCMsMSY.csv"),data.table = F)
+rawDat <- fread(paste0(cloud_dir_will,"PortfolioFiles/SunshPts_90 GCMsMSY.csv"),data.table = F)
 rawDat$ID2 <- gsub("(.*)[A-Z]$","\\1",rawDat$ID2) ##remove north/south
 CCISSPred <- CCISS_Spp(Y1 = rawDat,BGCmodel = BGCmodel,E1 = Edatope)
 SSPredFull <- CCISSPred[[1]]
@@ -425,7 +425,7 @@ allSitesSpp <- foreach(SNum = SL, .combine = rbind,
                              Returns <- simGrowthCpp(DF = annualDat)
                              #lines(Returns, type = 'l', col = cols[k])##plot
                              tmpR <- c(0,Returns)
-                             assets <- Returns - tmpR[-length(tmpR)]
+                             assets <- Returns - tmpR[-length(tmpR)] 
                              temp <- data.frame(Spp = rep(treeList[k],101), Year = 1:101, Returns = Returns)
                              output <- cbind(output, assets)
                            } ## for each tree species
