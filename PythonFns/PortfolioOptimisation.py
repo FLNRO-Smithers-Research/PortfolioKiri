@@ -34,11 +34,11 @@ def neg_port_return(weights, mean_returns, cov_matrix): ##for maximising return
     returns = np.sum(retAdj*weights) 
     return -(returns)
 
-def set_bounds(minV, maxV, mean_returns):
-    if(isinstance(minV, (float,int)) and isinstance(maxV, (float,int))):
-        return [(minV,maxV) for asset in range(len(mean_returns))]
-    if(len(minV) != len(maxV) or len(minV) !=  len(mean_returns)):
-        return -1
+def set_bounds(boundDat, spp):
+    tempInd = boundDat['Spp'].isin(spp)
+    newBnd = boundDat[tempInd]
+    minV = newBnd['minWt']
+    maxV = newBnd['maxWt']
     return [(mi,ma) for mi,ma in zip(minV,maxV)]
     
 
@@ -78,11 +78,11 @@ def set_target(mean_returns, cov_matrix):
     target = np.linspace(min_round, max_round, 20)
     return target
 
-def ef_weights_v2(returns, cov_matrix, minWt, maxWt, minTot): ##optType either mean or stdev - main R function
+def ef_weights_v2(returns, cov_matrix, boundDat, minTot): ##optType either mean or stdev - main R function
     spp = cov_matrix.columns
     sppUse = spp
     mean_returns = returns.mean()
-    bounds = set_bounds(minWt, maxWt, mean_returns)
+    bounds = set_bounds(boundDat, spp)
     bndNew = bounds
     
     while(len(mean_returns) > 1):

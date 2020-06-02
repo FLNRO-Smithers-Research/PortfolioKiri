@@ -53,10 +53,10 @@ SIBEC <- fread("InputsGit/PredSI_May2020.csv") ###import SI data (currently from
 SIBEC <- SIBEC[,c("SS_NoSpace","Spp","SIPred")] %>% set_colnames(c("SS_NoSpace","TreeSpp","MeanPlotSiteIndex"))
 
 ### run CCISS function to predict Site Series
-load(paste0(cloud_dir_will, "WNAv11_35_VAR_SubZone_ranger.Rdata"))
+load(paste0(cloud_dir_kiri, "WNAv11_35_VAR_SubZone_ranger.Rdata"))
 
 Edatope <- fread("./InputsGit/Edatopic_v11_20.csv",data.table = F)
-rawDat <- fread(paste0(cloud_dir_will,"PortfolioFiles/SunshPts_90 GCMsMSY.csv"),data.table = F)
+rawDat <- fread(paste0(cloud_dir_kiri,"PortfolioFiles/SunshPts_90 GCMsMSY.csv"),data.table = F)
 rawDat$ID2 <- gsub("(.*)[A-Z]$","\\1",rawDat$ID2) ##remove north/south
 CCISSPred <- CCISS_Spp(Y1 = rawDat,BGCmodel = BGCmodel,E1 = Edatope)
 SSPredFull <- CCISSPred[[1]]
@@ -228,8 +228,7 @@ Specify parameters...
 SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.5,0.5,1,4), 
                        "NoMort" = c(70,60,50,30)) ####ProbDead- out of 100 trees, how many will die each year at each suitability. NoMort- Percent of time no mortality
 
-#Trees <- c("At","Bl","Cw","Fd","Hw","Lw","Pl","Py","Sx") ##set species to use in portfolio
-Trees <- unique(SIBEC$TreeSpp) ##set species to use in portfolio Sunshine Coast test area
+Trees <- unique(SIBEC$TreeSpp)
 myColours <- data.table(TreeCode = Trees)
 myColours <- cols[myColours, on = "TreeCode"]
 myColours <- myColours[!is.na(HexColour),]
@@ -237,14 +236,25 @@ pal <- myColours$HexColour
 names(pal) <- myColours$TreeCode
 colScale <- scale_fill_manual(name = "variable", values = pal)
 Trees <- myColours$TreeCode
+
+
+##set min and max weights for each species
+boundDat <- data.table(Spp = Trees)
+boundDat[,`:=`(minWt = 0, maxWt = 1)]
+
+##adjust min and max weights (or remove species)
+## see below examples
+boundDat[Spp == "Hw",maxWt := 0] ##remove Hw
+boundDat[Spp == "Pl",minWt := 0.1] ## set min weight for Pl to 0.1
+
+##############
+notUse <- boundDat$Spp[boundDat$maxWt == 0]
+if(length(notUse > 0)){
+  Trees <- Trees[!Trees %in% notUse]
+}
 nSpp <- length(Trees)
 treeList <- Trees
-##set min and max weights for each species
-# minWt <- c(0,0,0,0,0.05,0.2,0,0.1)
-# maxWt <- c(0.3,0.3,0.8,0.5,0.4,0.6,1,1)
-# boundDat <- data.frame(Spp = Trees, Min = minWt, Max = maxWt)
-minWt <- 0
-maxWt <- 1
+
 minAccept <- 0.1 ##min acceptable weight in porfolio - if lower, will remove and re-optimize
 
 ```
@@ -320,7 +330,7 @@ outAll <- foreach(BGC = BGCs, .combine = loopCombine) %do% {
                            returns <- returns[,use]
                            sigma2 <- as.data.frame(cor(returns)) ###to create cov mat from returns
                        
-                           ef <- ef_weights_v2(returns, sigma2, minWt,maxWt,minAccept) 
+                           ef <- ef_weights_v2(returns, sigma2, boundDat,minAccept) 
                            ef_w <- ef[[1]]
                            ef_w$Sd <- ef[[2]]
                            ef_w$Return <- 1:20
