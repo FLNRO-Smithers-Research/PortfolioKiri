@@ -12,7 +12,7 @@ Ea,BETUNEO,x,Alaska paper birch,#606060
 Ep,BETUPAP,x,common paper birch,#707070
 Ew,BETUOCC,x,water birch,#808080
 Fd,PSEUMEN,x,Douglas-fir,#FFD601
-Fdc,PSEUMEN2,x,coast Douglas-fir,
+Fdc,PSEUMEN2,x,coast Douglas-fir,#FFD601
 Fdi,PSEUMEN1,x,Rocky Mountain Douglas-fir,
 Gp,CORNNUT,x,western flowering dogwood,#FFFFFF
 Hm,TSUGMER,x,mountain hemlock,#D776FF
@@ -32,7 +32,7 @@ Pli,PINUCON2,x,lodgepole pine,
 Pw,PINUMON,x,western white pine,#32a852
 Py,PINUPON,x,ponderosa pine,#F3861A
 Qg,QUERGAR,x,Garry oak,#FFFF66
-Ra,ARBUMEN,x,arbutus,
+Ra,ARBUMEN,x,arbutus,#909090
 Sb,PICEMAR,x,black spruce,
 Se,PICEENG,x,Engelmann spruce,
 Ss,PICESIT,x,Sitka spruce,#DA523E
