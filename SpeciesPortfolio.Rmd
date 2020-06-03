@@ -42,9 +42,15 @@ source("CCISS_Fns.R")
 
 
 ```{r load species data}
+inputDatName <- "SunshPntsNew_90 GCMsMSY.csv"
+
 ##Set drive with cloud data
-cloud_dir_will <- "C:/users/whmacken/Sync/CCISS_data/"
-cloud_dir_kiri <- "C:/Users/kirid/Sync/CCISS_data/"
+if(dir.exists("C:/users/whmacken/Sync")){
+  cloud_dir <- "C:/users/whmacken/Sync/CCISS_data/"
+}else{
+  cloud_dir <- "C:/Users/kirid/Sync/CCISS_data/"
+}
+
 ###Read in data
 SuitTable <- fread("InputsGit/Feasibility_v11_21.csv") ##tree spp suitability
 SuitTable <- unique(SuitTable)
@@ -56,13 +62,17 @@ SIBEC <- fread("InputsGit/PredSI_May2020.csv") ###import SI data (currently from
 
 SIBEC <- SIBEC[,c("SS_NoSpace","Spp","SIPred")] %>% set_colnames(c("SS_NoSpace","TreeSpp","MeanPlotSiteIndex"))
 
-### run CCISS function to predict Site Series
-load(paste0(cloud_dir_kiri, "WNAv11_35_VAR_SubZone_ranger.Rdata"))
+if(file.exists(paste0(cloud_dir,"CCISSPred.Rdata"))){
+  load(paste0(cloud_dir,"CCISSPred.Rdata"))
+}else{
+  ### run CCISS function to predict Site Series
+  load(paste0(cloud_dir, "WNAv11_35_VAR_SubZone_ranger.Rdata"))
+  Edatope <- fread("./InputsGit/Edatopic_v11_20.csv",data.table = F)
+  rawDat <- fread(paste0(cloud_dir,"PortfolioFiles/",inputDatName),data.table = F)
+  CCISSPred <- CCISS_Spp(Y1 = rawDat,BGCmodel = BGCmodel,E1 = Edatope)
+  save(CCISSPred, file = paste0(cloud_dir,"CCISSPred.Rdata"))
+}
 
-Edatope <- fread("./InputsGit/Edatopic_v11_20.csv",data.table = F)
-rawDat <- fread(paste0(cloud_dir_kiri,"PortfolioFiles/SunshPts_90 GCMsMSY.csv"),data.table = F)
-rawDat$ID2 <- gsub("(.*)[A-Z]$","\\1",rawDat$ID2) ##remove north/south
-CCISSPred <- CCISS_Spp(Y1 = rawDat,BGCmodel = BGCmodel,E1 = Edatope)
 SSPredFull <- CCISSPred[[1]]
 colnames(SSPredFull)[1] <- "MergedBGC"
 SSPredFull <- SSPredFull[grep("01",SSPredFull$SSCurrent),]
@@ -77,6 +87,12 @@ SSPredFull <- as.data.table(SSPredFull)
 temp <- SSPredFull[,.(Num = length(unique(FuturePeriod))), by = c("SiteNo","SSCurrent")]
 temp <- temp[Num == 3,-c("Num")]
 SSPredFull <- SSPredFull[temp,on = c("SiteNo","SSCurrent")]
+SSPredFull[,SiteNo := as.numeric(SiteNo)]
+
+analUnits <- fread(paste0(cloud_dir,"PortfolioFiles/AnalysisUnits.csv"))
+setkey(SSPredFull, SiteNo)
+setkey(analUnits, ID1)
+SSPredFull <- SSPredFull[analUnits]
 
 SSPredSave <- SSPredFull
 ```
@@ -85,11 +101,10 @@ Map of test locations by analysis unit
 ```{r location map}
 locations <- fread("./InputsGit/SunshineCoast_SamplePoints_New.csv") 
 locations2 <- locations %>% rename(latitude = "ycoord", longitude = "xcoord", elevation = "elevation_1") %>% dplyr::select (id, BGC_analysis,latitude,longitude)
-BGCmap <- st_read(dsn = paste0(cloud_dir_kiri, "PortfolioFiles/SunshineCoast.gpkg"), layer = "BGC_Dissolved")
+BGCmap <- st_read(dsn = paste0(cloud_dir, "PortfolioFiles/SunshineCoast.gpkg"), layer = "BGC_Dissolved")
 
 locations2 <- st_as_sf(locations2, coords = c("longitude","latitude"), crs = 4326, agr = "constant") %>%
   st_transform(st_crs(BGCmap))
-#identical(proj4string(provmap),proj4string(mnt_georef3))# double check that they match
 
 #tmaptools::palette_explorer() ###tool for choosing colours
 
@@ -103,48 +118,7 @@ tBGC
 
 ```
   
-Ratio of predicted BGC units for each landscape/BGC analysis unit (multiple locations) from CCISS function.
 
-```{r BGC_plot, fig.width=10, fig.height=8}
-BGCPred <- as.data.table(CCISSPred[[2]])
-BGCPred <- BGCPred[,.(Num = sum(Pred.len)), keyby = .(FuturePeriod,BGC,BGC.pred)]
-totNum <- BGCPred[,.(Total = sum(Num)), keyby = .(FuturePeriod,BGC)]
-BGCPred <- totNum[BGCPred]
-BGCPred[,Prop := Num/Total]
-
-period <- 2025
-BGCPred <- BGCPred[FuturePeriod == period & Prop > 0.05,]
-
-gr <- foreach(unit = unique(BGCPred$BGC), .combine = c) %do% {
-  temp <- BGCPred[BGC == unit,]
-  p1 <- ggplot(temp, aes(x = BGC.pred, y = Prop, fill = BGC.pred))+
-  geom_bar(stat = 'identity', position = "dodge")+
-    ggtitle(unit)+
-    theme_few()+
-    theme(axis.text.x = element_blank())
-  list(p1)
-}
-
-grid.arrange(grobs = gr, ncol = 3)
-```
-
-Site Index of portfolio species for each BGC
-
-```{r SI_check, fig.width = 10, fig.height = 12}
-gr <- foreach(unit = unique(SSPredFull$SSCurrent),.combine = c) %do% {
-  sub <- SSPredFull[SSCurrent == unit,]
-  sub <- SIBEC[sub, on = "SS_NoSpace"]
-  sub <- sub[,.(SI = weighted.mean(MeanPlotSiteIndex,SSprob)), by = .(FuturePeriod, TreeSpp)]
-  
-  p1 <- ggplot(sub, aes(x = TreeSpp, y = SI, fill = FuturePeriod))+
-    geom_bar(stat = "identity", position = "dodge")+
-    theme_few()+
-    ggtitle(unit)
-  list(p1)
-}
-
-grid.arrange(grobs = gr, ncol = 2)
-```
 
 Colour development...
 
@@ -256,7 +230,7 @@ Specify model parameters
 SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.5,0.5,1,4), 
                        "NoMort" = c(70,60,50,30)) ####ProbDead- out of 100 trees, how many will die each year at each suitability. NoMort- Percent of time no mortality
 
-knitr::kable(SuitProb)
+flextable(SuitProb)
 
 Trees <- unique(SIBEC$TreeSpp)
 myColours <- data.table(TreeCode = Trees)
@@ -274,11 +248,11 @@ boundDat[,`:=`(minWt = 0, maxWt = 1)]
 
 ##adjust min and max weights (or remove species)
 ## see below examples
-boundDat[Spp == "Hw",maxWt := 0] ##remove Hw
-boundDat[Spp == "Pl",minWt := 0.1] ## set min weight for Pl to 0.1
+# boundDat[Spp == "Hw",maxWt := 0] ##remove Hw
+# boundDat[Spp == "Pl",minWt := 0.1] ## set min weight for Pl to 0.1
 
 ##############
-knitr::kable(boundDat)
+flextable(boundDat)
 
 notUse <- boundDat$Spp[boundDat$maxWt == 0]
 if(length(notUse > 0)){
@@ -296,17 +270,17 @@ Loop through BGCs and Subzones, output graphics and optimum weights
 ```{r full portfolio, message = TRUE}
 future <- TRUE ## change to false to create portfolio with just current data
 
-BGCs <- unique(SSPredFull$CurrBGC)
+Units <- unique(SSPredFull$BGC_analysis)
 
-outAll <- foreach(BGC = BGCs, .combine = loopCombine) %do% {
-  SSPredBGC <- SSPredFull[CurrBGC == BGC,]
+outAll <- foreach(BGC = Units, .combine = loopCombine) %do% {
+  SSPredBGC <- SSPredFull[BGC_analysis == BGC,-("BGC_analysis")]
   SSList <- unique(SSPredBGC$SSCurrent)
   SSout <- foreach(selectBGC = SSList, .combine = loopCombine) %do% {
     cat("########## Processing", selectBGC,"###################\n")
     SSPredAll <- SSPredFull[SSPredFull$SSCurrent == selectBGC,]
     
     SiteList <- unique(SSPredAll$SiteNo)
-    SiteList <- rep(SiteList, each = round(15/length(SiteList)))
+    #SiteList <- rep(SiteList, each = round(15/length(SiteList)))
     SSPredAll <- SSPredAll[SSPredAll$SiteNo %in% SiteList & !is.na(SSPredAll$SSprob),]
     
     SL <- SiteList
@@ -387,6 +361,7 @@ outAll <- foreach(BGC = BGCs, .combine = loopCombine) %do% {
       maxSPos <- maxSharpe$Sd
       maxSharpe <- t(maxSharpe) %>% as.data.frame() %>% mutate(Spp = rownames(.)) %>% set_colnames(c("value","Spp"))
       maxSharpe$SSCurrent <- selectBGC
+      maxSharpe$Unit <- BGC
       efAll <- efAll[,-c("Return","Sharpe")]
       efAll <- melt(efAll, id.vars = "Sd")
     
@@ -398,7 +373,7 @@ outAll <- foreach(BGC = BGCs, .combine = loopCombine) %do% {
         geom_line(data = efAll[efAll$variable == "RealRet",], aes(x = Sd, y = value))+
         scale_x_reverse() +
         xlab("Volatility")+
-        ggtitle(selectBGC)+
+        ggtitle(BGC)+
         theme_few()
       
       list(Graph = list(p1), MaxS = maxSharpe)
@@ -415,7 +390,7 @@ outAll <- foreach(BGC = BGCs, .combine = loopCombine) %do% {
 
 Plot portfolios
 
-```{r plot_pf, fig.height = 10, fig.width = 12}
+```{r plot_pf, fig.height = 15, fig.width = 12}
 grid.arrange(grobs = outAll$Graph, ncol = 3)
 ```
 
@@ -433,101 +408,47 @@ tab <- colformat_num(tab,j = cols[-1],digits = 2)
 tab
 ```
 
-Run optimisation (note this may take a bit)
+Ratio of predicted BGC units for each landscape/BGC analysis unit (multiple locations) from CCISS function.
 
-```{r run portfolio}
-# SL <- SiteList
-# allSitesSpp <- foreach(SNum = SL, .combine = rbind, 
-#                        .packages = c("foreach","reshape2","dplyr","magrittr","Rcpp"), 
-#                        .noexport = c("simGrowthCpp")) %do% {
-#                          cat("Optimising site",SNum,"...\n")
-#                          SS.sum <- cleanData(SNum, Trees)
-#                          
-#                          cols <- rainbow(length(treeList))
-#                          annualDat <- data.frame("Year" = seq(2000,2100,1))
-#                          
-#                          #plot(0,0, type = "n", xlim = c(1,100), ylim = c(0,3000), xlab = "Year", ylab = "Volume")###plot
-#                          
-#                          eff_front <- foreach(w = 1, .combine = combineList) %do% { ##number of iterations
-#                            output <- data.frame("year" = annualDat$Year)
-#                            # growthSim <- data.frame(Spp = character(), Year = numeric(), Returns = numeric())
-#                            
-#                            for (k in 1:nSpp){ ##for each tree
-#                              
-#                              DatSpp <- SS.sum[SS.sum$Spp == treeList[k],]
-#                              
-#                              dat <- data.frame("Period" = c(2000,2025,2055,2085), "SIBEC" = DatSpp$MeanSI, "Suit" = DatSpp$MeanSuit)
-#                              dat$SIBEC <- dat$SIBEC/50 ##for mean annual increment
-#                              dat <- merge(dat, SuitProb, by = "Suit")
-#                              s <- approx(dat$Period, dat$SIBEC, n = 101) ##Smooth SI
-#                              p <- approx(dat$Period, dat$ProbDead, n = 101) ###Smooth Prob Dead
-#                              m <- approx(dat$Period, dat$NoMort, n = 101) ##Smooth No Mort
-#                              
-#                              ###data frame of annual data
-#                              annualDat <- data.frame("Year" = seq(2000,2100,1), "Growth" = s[["y"]], "MeanDead" = p[["y"]], "NoMort" = m[["y"]]) ##create working data
-#                              
-#                              Returns <- simGrowthCpp(DF = annualDat)
-#                              #lines(Returns, type = 'l', col = cols[k])##plot
-#                              tmpR <- c(0,Returns)
-#                              assets <- Returns - tmpR[-length(tmpR)] 
-#                              temp <- data.frame(Spp = rep(treeList[k],101), Year = 1:101, Returns = Returns)
-#                              output <- cbind(output, assets)
-#                            } ## for each tree species
-#                            
-#                            #legend("topleft", treeList, col = cols, pch = 15)
-#                            
-#                            colnames(output) <- c("Year", treeList)
-#                            
-#                            ####Portfolio#######################################
-#                            returns <- output
-#                            rownames(returns) <- returns[,1]
-#                            returns <- returns[,-1]
-#                            ###only include species with mean return > 1 in portfolio
-#                            use <- colnames(returns)[colMeans(returns) > 1] ###should probably be higher
-#                            returns <- returns[,use]
-#                            sigma2 <- as.data.frame(cor(returns)) ###to create cov mat from returns
-#                        
-#                            ef <- ef_weights_v2(returns, sigma2, minWt,maxWt,minAccept) 
-#                            ef_w <- ef[[1]]
-#                            ef_w$Sd <- ef[[2]]
-#                            ef_w$Return <- 1:20
-#                            ef_w$It <- w
-#                            
-#                     
-#                            list(frontier = ef_w)
-#                          }
-#                          
-#                          eff_front2 <- as.data.table(eff_front[['frontier']])
-#                          eff_front2$SiteNo <- SNum
-#                          melt(eff_front2, id.vars = c("Return","It","SiteNo"),variable.name = "Spp")
-#                        }
+```{r BGC_plot, fig.width=10, fig.height=8}
+BGCPred <- as.data.table(CCISSPred[[2]])
+setkey(BGCPred, SiteNo)
+BGCPred <- BGCPred[analUnits]
+BGCPred <- BGCPred[,.(Num = sum(Pred.len)), keyby = .(FuturePeriod,BGC_analysis,BGC.pred)]
+totNum <- BGCPred[,.(Total = sum(Num)), keyby = .(FuturePeriod,BGC_analysis)]
+BGCPred <- totNum[BGCPred]
+BGCPred[,Prop := Num/Total]
+
+period <- 2025
+BGCPred <- BGCPred[FuturePeriod == period & Prop > 0.05,]
+
+gr <- foreach(unit = unique(BGCPred$BGC_analysis), .combine = c) %do% {
+  temp <- BGCPred[BGC_analysis == unit,]
+  p1 <- ggplot(temp, aes(x = BGC.pred, y = Prop, fill = BGC.pred))+
+  geom_bar(stat = 'identity', position = "dodge")+
+    ggtitle(unit)+
+    theme_few()+
+    theme(axis.text.x = element_blank())
+  list(p1)
+}
+
+grid.arrange(grobs = gr, ncol = 3)
 ```
 
-Plot by volatility...
+Site Index of portfolio species for each BGC
 
-```{r plot portfolio curves}
-require(ggthemes)
+```{r SI_check, fig.width = 10, fig.height = 12}
+gr <- foreach(unit = unique(SSPredFull$BGC_analysis),.combine = c) %do% {
+  sub <- SSPredFull[BGC_analysis == unit,]
+  sub <- SIBEC[sub, on = "SS_NoSpace"]
+  sub <- sub[,.(SI = weighted.mean(MeanPlotSiteIndex,SSprob)), by = .(FuturePeriod, TreeSpp)]
+  
+  p1 <- ggplot(sub, aes(x = TreeSpp, y = SI, fill = FuturePeriod))+
+    geom_bar(stat = "identity", position = "dodge")+
+    theme_few()+
+    ggtitle(unit)
+  list(p1)
+}
 
-# efAll <- allSitesSpp
-# efAll <- efAll[,-c("It")]
-# efAll <- dcast(efAll,Return ~ Spp, fun.aggregate = function(x){sum(x)/(length(SL))})
-# efAll <- efAll[complete.cases(efAll),]
-# efAll$Return <- efAll$Return/max(efAll$Return) ##standardise return
-# 
-# efAll <- melt(efAll, id.vars = "Sd")
-# 
-# myColours <- c("brown","red","pink", "orange","yellow","green","blue","magenta","darkgoldenrod")
-# names(myColours) <- levels(factor(Trees))
-# colScale <- scale_fill_manual(name = "variable", values = myColours)
-# 
-# ggplot(efAll[efAll$variable != "Return",])+
-#   geom_area(aes(x = Sd, y = value, fill = variable),size = 0.00001, col = "black", stat = "identity")+
-#   colScale +
-#   geom_line(data = efAll[efAll$variable == "Return",], aes(x = Sd, y = value))+
-#   scale_x_reverse() +
-#   xlab("Volatility")+
-#   ggtitle(selectBGC)+
-#   theme_few()
-#   #scale_colour_few()
-
+grid.arrange(grobs = gr, ncol = 2)
 ```
