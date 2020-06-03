@@ -29,6 +29,7 @@ library(ggthemes)
 library(flextable)
 require(rgdal)
 require(tmap)
+library(sf)
 ```
 
 
@@ -56,10 +57,10 @@ SIBEC <- fread("InputsGit/PredSI_May2020.csv") ###import SI data (currently from
 SIBEC <- SIBEC[,c("SS_NoSpace","Spp","SIPred")] %>% set_colnames(c("SS_NoSpace","TreeSpp","MeanPlotSiteIndex"))
 
 ### run CCISS function to predict Site Series
-load(paste0(cloud_dir_will, "WNAv11_35_VAR_SubZone_ranger.Rdata"))
+load(paste0(cloud_dir_kiri, "WNAv11_35_VAR_SubZone_ranger.Rdata"))
 
 Edatope <- fread("./InputsGit/Edatopic_v11_20.csv",data.table = F)
-rawDat <- fread(paste0(cloud_dir_will,"PortfolioFiles/SunshPts_90 GCMsMSY.csv"),data.table = F)
+rawDat <- fread(paste0(cloud_dir_kiri,"PortfolioFiles/SunshPts_90 GCMsMSY.csv"),data.table = F)
 rawDat$ID2 <- gsub("(.*)[A-Z]$","\\1",rawDat$ID2) ##remove north/south
 CCISSPred <- CCISS_Spp(Y1 = rawDat,BGCmodel = BGCmodel,E1 = Edatope)
 SSPredFull <- CCISSPred[[1]]
@@ -82,18 +83,13 @@ SSPredSave <- SSPredFull
 
 Map of test locations by analysis unit
 ```{r location map}
-locations <- fread("./InputsGit/SunshineCoast_SamplePoints_New.csv", data.table = F) 
+locations <- fread("./InputsGit/SunshineCoast_SamplePoints_New.csv") 
 locations2 <- locations %>% rename(latitude = "ycoord", longitude = "xcoord", elevation = "elevation_1") %>% dplyr::select (id, BGC_analysis,latitude,longitude)
-BGCmap <- readOGR("inputs/SunshineCoast.gpkg", "BGC_Dissolved")
-# BGCmap@data$id <- rownames(BGCmap@data)
-# BGCmap <- fortify(BGCmap, region = "id")## creates dataframe version of shape file for ggplot
-# BGCmap <- join(BGCmap, BGCmap@data, by = "id")  ## joins back the data
-###create spatial layer of sampled mountains for overlay
-coordinates(locations2)<- ~ longitude + latitude  ##make as SpatialPointsDataFrame"
-proj4string(locations2)<- CRS("+proj=longlat +datum=NAD83") ## add current projection
-locations2 <-spTransform(locations2, CRS(proj4string(BGCmap))) ### change projection to match Provincial Outline
+BGCmap <- st_read(dsn = paste0(cloud_dir_kiri, "PortfolioFiles/SunshineCoast.gpkg"), layer = "BGC_Dissolved")
+
+locations2 <- st_as_sf(locations2, coords = c("longitude","latitude"), crs = 4326, agr = "constant") %>%
+  st_transform(st_crs(BGCmap))
 #identical(proj4string(provmap),proj4string(mnt_georef3))# double check that they match
-locations <- as.data.frame(locations2) # convert back to data.frame for ggplot
 
 #tmaptools::palette_explorer() ###tool for choosing colours
 
@@ -254,11 +250,13 @@ loopCombine <- function(a,b){
 ```
 
 Specify model parameters
-Need to output table of these variables
+
 ```{r model parameters}
 ### Probabilities attached to each suitability
 SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.5,0.5,1,4), 
                        "NoMort" = c(70,60,50,30)) ####ProbDead- out of 100 trees, how many will die each year at each suitability. NoMort- Percent of time no mortality
+
+knitr::kable(SuitProb)
 
 Trees <- unique(SIBEC$TreeSpp)
 myColours <- data.table(TreeCode = Trees)
@@ -280,6 +278,8 @@ boundDat[Spp == "Hw",maxWt := 0] ##remove Hw
 boundDat[Spp == "Pl",minWt := 0.1] ## set min weight for Pl to 0.1
 
 ##############
+knitr::kable(boundDat)
+
 notUse <- boundDat$Spp[boundDat$maxWt == 0]
 if(length(notUse > 0)){
   Trees <- Trees[!Trees %in% notUse]
