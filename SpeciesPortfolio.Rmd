@@ -8,7 +8,7 @@ output:
 ---
 
 This script uses an adaptation of Markowitz Modern Portfolio Theory (MPT) analysis to calculate the optimal mix of tree species for a given set of locations and specified site series. 
-The model uses the CCISS model to forecast future BGC for 30 GCM/carbon scenarios for all locations and aligns the current site series with future potential site series via edatopic overlap. A MPT portfolio is constructed for each future climate using data on tree species suitability, site index by site series information, and covariance of species in all current and potenial future site series. Probabalistic loss rates are modelled based on species suitability. 
+The model uses the CCISS model to forecast future BGCs for 30 GCM/carbon scenarios for all locations and aligns the current site series with future potential site series via edatopic overlap. A MPT portfolio is constructed for each future climate using data on tree species suitability, site index by site series information, and covariance of species in all current and potenial future site series. Probabalistic loss rates are modelled based on species suitability. 
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
@@ -32,14 +32,15 @@ require(tmap)
 library(sf)
 ```
 
+Source functions for growth simulations (C++), Portfolio optimization (Python) and CCISS analysis (R)
 
 ```{r read in  portfolio functions}
-##Source functions for growth simulations (C++), Portfolio optimization (Python) and CCISS analysis (R)
 sourceCpp("./CppFunctions/SimGrowth.cpp")
 source_python("./PythonFns/PortfolioOptimisation.py")
 source("CCISS_Fns.R")
 ```
 
+Load data and run CCISS functions (if necessary)
 
 ```{r load species data}
 inputDatName <- "SunshPntsNew_90 GCMsMSY.csv"
@@ -98,6 +99,7 @@ SSPredSave <- SSPredFull
 ```
 
 Map of test locations by analysis unit
+
 ```{r location map}
 locations <- fread("./InputsGit/SunshineCoast_SamplePoints_New.csv") 
 locations2 <- locations %>% rename(latitude = "ycoord", longitude = "xcoord", elevation = "elevation_1") %>% dplyr::select (id, BGC_analysis,latitude,longitude)
@@ -133,9 +135,9 @@ library(unikn)
 seecol(myPal, hex = T, rgb = F)
 ```
 
+Function to clean and summarise SIBEC and CCISS data into MeanSI and MeanSuitability
 
 ```{r CCISS predictions}
-##Function to clean and summarise SIBEC and CCISS data
 ##function to clean data and summarise 
 cleanData <- function(SNum,Trees){
   SSPred <- SSPredAll[SiteNo == SNum,] ###subset
@@ -265,8 +267,9 @@ minAccept <- 0.1 ##min acceptable weight in porfolio - if lower, will remove and
 
 ```
 
+Setup for parallel computing
 
-```{r parallelSetup}
+```{r parallelSetup, results = 'hide'}
 worker.init <- function(){
     Rcpp::sourceCpp("./CppFunctions/SimGrowth.cpp")
 }
@@ -277,7 +280,7 @@ clusterCall(cl, worker.init)
 registerDoParallel(cl)
 ```
 
-Loop through BGCs and Subzones, output graphics and optimum weights
+Loop through BGCs and Subzones, run portfolio optimisation, output graphics and optimum weights
 
 ```{r full portfolio, message = TRUE}
 future <- TRUE ## change to false to create portfolio with just current data
@@ -379,10 +382,11 @@ outAll <- foreach(BGC = Units, .combine = loopCombine,
       maxSharpe$Unit <- BGC
       efAll <- efAll[,-c("Return","Sharpe")]
       efAll <- melt(efAll, id.vars = "Sd")
+      efAll$variable <- factor(efAll$variable, levels = sort(unique(as.character(efAll$variable))))
     
       
-      p1 <- ggplot(efAll[efAll$variable != "RealRet",])+
-        geom_area(aes(x = Sd, y = value, fill = variable),size = 0.00001, col = "black", stat = "identity")+
+      p1 <- ggplot(efAll[efAll$variable != "RealRet",],aes(x = Sd, y = value,group = variable))+
+        geom_area(aes(fill = variable), size = 0.00001, col = "black", stat = "identity")+
         colScale +
         geom_vline(xintercept = maxSPos)+
         geom_line(data = efAll[efAll$variable == "RealRet",], aes(x = Sd, y = value))+
@@ -400,17 +404,18 @@ outAll <- foreach(BGC = Units, .combine = loopCombine,
   # dev.off()
 }
 
+stopCluster(cl)
 
 ```
 
-Plot portfolios
+Plot efficient frontier of each portfolio
 
 ```{r plot_pf, fig.height = 15, fig.width = 12}
 grid.arrange(grobs = outAll$Graph, ncol = 3)
 ```
 
 
-### Formatted table
+Display mean weights at max Sharpe ratio for each analysis unit
 
 ```{r table}
 MSWeights <- dcast(outAll$MaxS,Unit ~ Spp)
@@ -422,6 +427,8 @@ tab <- flextable(as.data.frame(MSWeights), col_keys = cols)
 tab <- colformat_num(tab,j = cols[-1],digits = 2)
 tab
 ```
+
+## Investigation of predicted units and SI
 
 Ratio of predicted BGC units for each landscape/BGC analysis unit (multiple locations) from CCISS function.
 
