@@ -265,6 +265,18 @@ minAccept <- 0.1 ##min acceptable weight in porfolio - if lower, will remove and
 
 ```
 
+
+```{r parallelSetup}
+worker.init <- function(){
+    Rcpp::sourceCpp("./CppFunctions/SimGrowth.cpp")
+}
+
+require(doParallel)
+cl <- makePSOCKcluster(detectCores()-2)
+clusterCall(cl, worker.init)
+registerDoParallel(cl)
+```
+
 Loop through BGCs and Subzones, output graphics and optimum weights
 
 ```{r full portfolio, message = TRUE}
@@ -272,7 +284,10 @@ future <- TRUE ## change to false to create portfolio with just current data
 
 Units <- unique(SSPredFull$BGC_analysis)
 
-outAll <- foreach(BGC = Units, .combine = loopCombine) %do% {
+outAll <- foreach(BGC = Units, .combine = loopCombine,
+                  .packages = c("reshape2","Rcpp","magrittr","reticulate", "data.table","foreach","ggplot2","ggthemes"), 
+                  .noexport = c("gs2gw", "simGrowthCBST","simGrowthCpp")) %dopar% {
+  reticulate::source_python("./PythonFns/PortfolioOptimisation.py") ##comment out this line if running sequentially
   SSPredBGC <- SSPredFull[BGC_analysis == BGC,-("BGC_analysis")]
   SSList <- unique(SSPredBGC$SSCurrent)
   SSout <- foreach(selectBGC = SSList, .combine = loopCombine) %do% {
@@ -398,12 +413,12 @@ grid.arrange(grobs = outAll$Graph, ncol = 3)
 ### Formatted table
 
 ```{r table}
-MSWeights <- dcast(outAll$MaxS,SSCurrent ~ Spp)
+MSWeights <- dcast(outAll$MaxS,Unit ~ Spp)
 MSWeights[MSWeights < 0.05] <- NA
 MSWeights <- MSWeights[,c(T,colSums(MSWeights[,-1], na.rm = T) > 0)]
 MSWeights[is.na(MSWeights)] <- 0
 cols <- c(names(MSWeights)[!names(MSWeights) %in% Trees],names(MSWeights)[names(MSWeights) %in% Trees])
-tab <- flextable(MSWeights, col_keys = cols)
+tab <- flextable(as.data.frame(MSWeights), col_keys = cols)
 tab <- colformat_num(tab,j = cols[-1],digits = 2)
 tab
 ```
