@@ -287,19 +287,20 @@ registerDoParallel(cl)
 Loop through BGCs and Subzones, run portfolio optimisation, output graphics and optimum weights
 
 ```{r full portfolio, message = TRUE}
-timePeriods = c(2000)
+timePeriods = c(2000,2025,2055,2085)
 
 Units <- unique(SSPredFull$BGC_analysis)
 
 outAll <- foreach(BGC = Units, .combine = loopCombine,
-                  .packages = c("reshape2","Rcpp","magrittr","reticulate", "data.table","foreach","ggplot2","ggthemes"), 
+                  .packages = c("reshape2","Rcpp","magrittr","reticulate",
+                                "data.table","foreach","ggplot2","ggthemes","scales"), 
                   .noexport = c("gs2gw", "simGrowthCBST","simGrowthCpp")) %dopar% {
   reticulate::source_python("./PythonFns/PortfolioOptimisation.py") ##comment out this line if running sequentially
   SSPredBGC <- SSPredFull[BGC_analysis == BGC,-("BGC_analysis")]
   SSList <- unique(SSPredBGC$SSCurrent)
   SSout <- foreach(selectBGC = SSList, .combine = loopCombine) %do% {
     cat("########## Processing", selectBGC,"###################\n")
-    SSPredAll <- SSPredFull[SSPredFull$SSCurrent == selectBGC,]
+    SSPredAll <- SSPredBGC[SSPredBGC$SSCurrent == selectBGC,]
     
     SiteList <- unique(SSPredAll$SiteNo)
     #SiteList <- rep(SiteList, each = round(15/length(SiteList)))
@@ -408,13 +409,18 @@ outAll <- foreach(BGC = Units, .combine = loopCombine,
   # dev.off()
 }
 
-stopCluster(cl)
 
 ```
 
 Plot efficient frontier of each portfolio
 
 ```{r plot_pf, fig.height = 15, fig.width = 12}
+pdfOutput <- TRUE
+if(pdfOutput){
+  pdf("PortfolioGraphs.pdf", width = 12, height = 15)
+  grid.arrange(grobs = outAll$Graph, ncol = 3)
+  dev.off()
+}
 grid.arrange(grobs = outAll$Graph, ncol = 3)
 ```
 
