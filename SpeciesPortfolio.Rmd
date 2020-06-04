@@ -139,11 +139,12 @@ Function to clean and summarise SIBEC and CCISS data into MeanSI and MeanSuitabi
 
 ```{r CCISS predictions}
 ##function to clean data and summarise 
-cleanData <- function(SNum,Trees){
+cleanData <- function(SNum,Trees,timePer){
   SSPred <- SSPredAll[SiteNo == SNum,] ###subset
   
   ##Merge SIBEC data
   SIBEC <- SIBEC[TreeSpp %in% Trees,]
+  SSPred <- SSPred[SSPred$FuturePeriod %in% timePer,]
   SSPred <- SSPred[,c(6,3,4)]
   SSPred <- merge(SSPred, SIBEC, by = "SS_NoSpace", all.x = TRUE)
   
@@ -159,10 +160,12 @@ cleanData <- function(SNum,Trees){
       new
     }
   }
-  if(nrow(add) > 0){
-    add$MeanPlotSiteIndex <- 5 ##Set missing SI
-    SSPred <- rbind(SSPred, add)
-  }
+  if(!is.null(add)){
+    if(nrow(add) > 0){
+      add$MeanPlotSiteIndex <- 5 ##Set missing SI
+      SSPred <- rbind(SSPred, add)
+    }
+  } 
   
   
   SSPred <- SSPred[!is.na(SSPred$TreeSpp),]
@@ -204,6 +207,7 @@ cleanData <- function(SNum,Trees){
                    by = .(Spp,FuturePeriod)]
   
   SS.sum <- rbind(SS.sum, current)
+  SS.sum <- SS.sum[SS.sum$FuturePeriod %in% timePer,]
   ###not sure what we were doing here?
   SS.sum$MeanSI[SS.sum$MeanSuit == 4] <- 5
   SS.sum$MeanSI[SS.sum$MeanSuit == 5] <- 0
@@ -283,7 +287,7 @@ registerDoParallel(cl)
 Loop through BGCs and Subzones, run portfolio optimisation, output graphics and optimum weights
 
 ```{r full portfolio, message = TRUE}
-future <- TRUE ## change to false to create portfolio with just current data
+timePeriods = c(2000)
 
 Units <- unique(SSPredFull$BGC_analysis)
 
@@ -307,13 +311,12 @@ outAll <- foreach(BGC = Units, .combine = loopCombine,
                        .noexport = c("simGrowthCpp")) %do% {
                          
                          #cat("Optimising site",SNum,"...\n")
-                         SS.sum <- cleanData(SNum, Trees)
-                         
-                         if(!future){
-                           tempSI <- SS.sum$MeanSI[SS.sum$FuturePeriod == 2000]
-                           tempSuit <- SS.sum$MeanSuit[SS.sum$FuturePeriod == 2000]
-                           SS.sum$MeanSI <- rep(tempSI, each = 4)
-                           SS.sum$MeanSuit <- rep(tempSuit, each = 4)
+                         SS.sum <- cleanData(SNum, Trees, timePer = timePeriods)
+                         SS.sum$FuturePeriod <- as.numeric(SS.sum$FuturePeriod)
+                         if(length(timePeriods) == 1){
+                           temp <- SS.sum
+                           temp$FuturePeriod <- SS.sum$FuturePeriod[1]+85
+                           SS.sum <- rbind(SS.sum, temp)
                          }
                          
                          if(!is.null(SS.sum)){
@@ -325,7 +328,8 @@ outAll <- foreach(BGC = Units, .combine = loopCombine,
                              
                              DatSpp <- SS.sum[SS.sum$Spp == treeList[k],]
                              
-                             dat <- data.frame("Period" = c(2000,2025,2055,2085), "SIBEC" = DatSpp$MeanSI, "Suit" = DatSpp$MeanSuit)
+                             dat <- data.frame("Period" = rescale(as.numeric(DatSpp$FuturePeriod), to = c(2000,2085)), 
+                                               "SIBEC" = DatSpp$MeanSI, "Suit" = DatSpp$MeanSuit)
                              dat$SIBEC <- dat$SIBEC/50 ##for mean annual increment
                              dat <- merge(dat, SuitProb, by = "Suit")
                              s <- approx(dat$Period, dat$SIBEC, n = 101) ##Smooth SI
