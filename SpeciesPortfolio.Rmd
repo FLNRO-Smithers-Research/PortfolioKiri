@@ -3,7 +3,8 @@ title: "SpeciesPortfolio"
 author: "Kiri Daust"
 date: "17/05/2020"
 output:
-  html_document: default
+  html_document: 
+      theme: readable
   pdf_document: default
 ---
 
@@ -98,7 +99,7 @@ SSPredFull <- SSPredFull[analUnits]
 SSPredSave <- SSPredFull
 ```
 
-Map of test locations by analysis unit
+##Map of test locations by analysis unit
 
 ```{r location map}
 locations <- fread("./InputsGit/SunshineCoast_SamplePoints_New.csv") 
@@ -121,7 +122,6 @@ tBGC
 ```
   
 
-
 Colour development...
 
 ```{r colours}
@@ -135,9 +135,10 @@ library(unikn)
 seecol(myPal, hex = T, rgb = F)
 ```
 
-Function to clean and summarise SIBEC and CCISS data into MeanSI and MeanSuitability
+
 
 ```{r CCISS predictions}
+#Function to clean and summarise SIBEC and CCISS data into MeanSI and MeanSuitability
 ##function to clean data and summarise 
 cleanData <- function(SNum,Trees,timePer){
   SSPred <- SSPredAll[SiteNo == SNum,] ###subset
@@ -229,7 +230,7 @@ loopCombine <- function(a,b){
 
 ```
 
-Specify model parameters
+Model Parameters
 
 ```{r model parameters}
 ### Probabilities attached to each suitability
@@ -271,9 +272,11 @@ minAccept <- 0.1 ##min acceptable weight in porfolio - if lower, will remove and
 
 ```
 
-Setup for parallel computing
+
 
 ```{r parallelSetup, results = 'hide'}
+##Setup for parallel computing
+
 worker.init <- function(){
     Rcpp::sourceCpp("./CppFunctions/SimGrowth.cpp")
 }
@@ -425,7 +428,7 @@ grid.arrange(grobs = outAll$Graph, ncol = 3)
 ```
 
 
-Display mean weights at max Sharpe ratio for each analysis unit
+## Portfolio of species at the max Sharpe ratio for each analysis unit.
 
 ```{r table}
 MSWeights <- dcast(outAll$MaxS,Unit ~ Spp)
@@ -438,7 +441,7 @@ tab <- colformat_num(tab,j = cols[-1],digits = 2)
 tab
 ```
 
-## Investigation of predicted units and SI
+## Predicted BGC subzone/variants for each future time period from 30 climate models
 
 Ratio of predicted BGC units for each landscape/BGC analysis unit (multiple locations) from CCISS function.
 
@@ -467,7 +470,7 @@ gr <- foreach(unit = unique(BGCPred$BGC_analysis), .combine = c) %do% {
 grid.arrange(grobs = gr, ncol = 3)
 ```
 
-Site Index of portfolio species for each BGC
+## Estimated site index of portfolio species in each analysis unit for each time period
 
 ```{r SI_check, fig.width = 10, fig.height = 12}
 gr <- foreach(unit = unique(SSPredFull$BGC_analysis),.combine = c) %do% {
