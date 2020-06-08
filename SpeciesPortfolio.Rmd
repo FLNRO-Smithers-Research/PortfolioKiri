@@ -1,15 +1,18 @@
-  ---
-title: "SpeciesPortfolio"
-author: "Kiri Daust"
+---
+title: "Climate Change Optimized Species Portfolio for Reforestation Planning"
+author: "Will MacKenzie and Kiri Daust"
 date: "17/05/2020"
 output:
   html_document: 
-      theme: readable
-  pdf_document: default
+    fig_caption: yes
+    theme: lumen
+    toc: yes
 ---
 
-This script uses an adaptation of Markowitz Modern Portfolio Theory (MPT) analysis to calculate the optimal mix of tree species for a given set of locations and specified site series. 
+This report presents a range of risk-return optimized portfolios of species for reforestation generated using Markowitz Modern Portfolio Theory (MPT). The analysis uses the forecast site series level changes to species feasibility from the Climate Change-Informed Species Selection (CCISS) tool and site index by site series growth information (SIBEC) to calculate the optimal mix of tree species given the modelled uncertainty in future climates up to 2070.
 The model uses the CCISS model to forecast future BGCs for 30 GCM/carbon scenarios for all locations and aligns the current site series with future potential site series via edatopic overlap. A MPT portfolio is constructed for each future climate using data on tree species suitability, site index by site series information, and covariance of species in all current and potenial future site series. Probabalistic loss rates are modelled based on species suitability. 
+User inputs to the script are training point locations that will represent BGC-based analysis units (e.g. MHmm1_high and MHmm1_low). 
+This report is generated from Rmarkdown.
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
@@ -31,20 +34,24 @@ library(flextable)
 require(rgdal)
 require(tmap)
 library(sf)
+require(tufte)
 ```
 
-Source functions for growth simulations (C++), Portfolio optimization (Python) and CCISS analysis (R)
+
 
 ```{r read in  portfolio functions}
+##Source functions for growth simulations (C++), Portfolio optimization (Python) and CCISS analysis (R)
 sourceCpp("./CppFunctions/SimGrowth.cpp")
 source_python("./PythonFns/PortfolioOptimisation.py")
 source("CCISS_Fns.R")
 ```
 
-Load data and run CCISS functions (if necessary)
+
 
 ```{r load species data}
-inputDatName <- "SunshPntsNew_90 GCMsMSY.csv"
+##Load data and run CCISS functions (if necessary)
+
+inputDatName <- "SunshPntsNew_90 GCMsMSY.csv" ##generated in ClimateBC for all variable and all future climate scenarios
 
 ##Set drive with cloud data
 if(dir.exists("C:/users/whmacken/Sync")){
@@ -99,9 +106,11 @@ SSPredFull <- SSPredFull[analUnits]
 SSPredSave <- SSPredFull
 ```
 
-##Map of test locations by analysis unit
+
 
 ```{r location map}
+
+## Create m ap of test locations by analysis unit
 locations <- fread("./InputsGit/SunshineCoast_SamplePoints_New.csv") 
 locations2 <- locations %>% rename(latitude = "ycoord", longitude = "xcoord", elevation = "elevation_1") %>% dplyr::select (id, BGC_analysis,latitude,longitude)
 BGCmap <- st_read(dsn = paste0(cloud_dir, "PortfolioFiles/SunshineCoast.gpkg"), layer = "BGC_Dissolved")
@@ -122,9 +131,9 @@ tBGC
 ```
   
 
-Colour development...
-
 ```{r colours}
+##Colour development for species 
+
 cols <- fread("./InputsGit/PortfolioSppColours.csv")
 cols <- cols[HexColour != "",]
 myPal <- cols$HexColour
@@ -132,7 +141,7 @@ names(myPal) <- cols$TreeCode
 
 
 library(unikn)
-seecol(myPal, hex = T, rgb = F)
+#seecol(myPal, hex = T, rgb = F)
 ```
 
 
@@ -230,7 +239,8 @@ loopCombine <- function(a,b){
 
 ```
 
-Model Parameters
+## Model Parameters
+Minimum and maximum portfolio ratios can be set for the entire portfolio or by species. These limits will be accounted for in the portfolio often by rebalancing it to include more of an species with similar environmental responses. For example, capping Hw abundance in the portfolio will commonly lead to an increase in the amount of Cw in the portfolio.
 
 ```{r model parameters}
 ### Probabilities attached to each suitability
@@ -271,7 +281,6 @@ treeList <- Trees
 minAccept <- 0.1 ##min acceptable weight in porfolio - if lower, will remove and re-optimize
 
 ```
-
 
 
 ```{r parallelSetup, results = 'hide'}
