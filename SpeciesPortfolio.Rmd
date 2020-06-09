@@ -453,7 +453,7 @@ grid.arrange(grobs = outAll$Graph, ncol = 3)
 
 ```{r table}
 MSWeights <- dcast(outAll$MaxS,Unit ~ Spp)
-MSWeights[MSWeights < 0.05] <- NA
+MSWeights[MSWeights < 0.01] <- NA
 MSWeights <- MSWeights[,c(T,colSums(MSWeights[,-1], na.rm = T) > 0)]
 MSWeights[is.na(MSWeights)] <- 0
 cols <- c(names(MSWeights)[!names(MSWeights) %in% Trees],names(MSWeights)[names(MSWeights) %in% Trees])
