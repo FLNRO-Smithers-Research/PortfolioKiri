@@ -247,7 +247,13 @@ Minimum and maximum portfolio ratios can be set for the entire portfolio or by s
 SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.5,0.5,1,4), 
                        "NoMort" = c(70,60,50,30)) ####ProbDead- out of 100 trees, how many will die each year at each suitability. NoMort- Percent of time no mortality
 
-ft1 <- flextable(SuitProb) %>% set_caption("Probability parameters for tree death")
+# ft1 <- flextable(SuitProb) %>% set_caption("Probability parameters for tree death")
+# 
+
+##Set minimum weighting for any species to appear in portfolio
+minAccept <- 0.05 ##min acceptable weight in porfolio - if lower, will remove and re-optimize
+
+cat (paste (minAccept, "is the minimum percent of portolio for a species to be used in final portfolio"))
 
 Trees <- unique(SIBEC$TreeSpp)
 myColours <- data.table(TreeCode = Trees)
@@ -257,7 +263,6 @@ pal <- myColours$HexColour
 names(pal) <- myColours$TreeCode
 colScale <- scale_fill_manual(name = "variable", values = pal)
 Trees <- myColours$TreeCode
-
 
 ##set min and max weights for each species
 boundDat <- data.table(Spp = Trees)
@@ -269,7 +274,7 @@ boundDat[,`:=`(minWt = 0, maxWt = 1)]
 # boundDat[Spp == "Pl",minWt := 0.1] ## set min weight for Pl to 0.1
 
 ##############
-ft2 <- flextable(boundDat) %>% set_caption("Min and max weights in portfolio")
+ft2 <- flextable(boundDat) %>% set_caption("Min and max percent of portolio weiting for individual species in portfolio")
 
 notUse <- boundDat$Spp[boundDat$maxWt == 0]
 if(length(notUse > 0)){
@@ -278,9 +283,8 @@ if(length(notUse > 0)){
 nSpp <- length(Trees)
 treeList <- Trees
 
-minAccept <- 0.1 ##min acceptable weight in porfolio - if lower, will remove and re-optimize
 
-ft1
+#ft1
 ft2
 
 ```
@@ -302,7 +306,7 @@ registerDoParallel(cl)
 Loop through BGCs and Subzones, run portfolio optimisation, output graphics and optimum weights
 
 ```{r full portfolio, message = TRUE}
-timePeriods = c(2000,2025,2055,2085)
+timePeriods = c(2000,2025,2055)#,2085
 
 Units <- unique(SSPredFull$BGC_analysis)
 
@@ -408,14 +412,16 @@ outAll <- foreach(BGC = Units, .combine = loopCombine,
     
       
       p1 <- ggplot(efAll[efAll$variable != "RealRet",],aes(x = Sd, y = value,group = variable))+
-        geom_area(aes(fill = variable), size = 0.00001, col = "black", stat = "identity")+
+        geom_area(aes(fill = variable), size = 0.00001, col = "grey50", stat = "identity")+
         colScale +
-        geom_vline(xintercept = maxSPos, linetype = "dashed")+
-        geom_vline(xintercept = ret90, colour = "#040404",linetype = "dashed")+
-        geom_line(data = efAll[efAll$variable == "RealRet",], aes(x = Sd, y = value))+
+        geom_vline(xintercept = maxSPos, colour = "blue", linetype = "twodash")+
+        geom_vline(xintercept = ret90, colour = "grey27",linetype = "dashed")+
+        geom_line(data = efAll[efAll$variable == "RealRet",], aes(x = Sd, y = value), colour = "black",linetype = "F1", size = .75)+
         scale_x_reverse() +
-        xlab("Volatility")+
-        ggtitle(BGC)+
+        scale_fill_discrete(name = "species")+ 
+        xlab("Max Return -> Minimized Risk")+
+        ylab("portfolio ratio")+
+        ggtitle(paste(BGC , "analysis unit", sep = " "))+
         theme_few()
       
       list(Graph = list(p1), MaxS = maxSharpe)
@@ -430,7 +436,7 @@ outAll <- foreach(BGC = Units, .combine = loopCombine,
 
 ```
 
-Plot efficient frontier of each portfolio
+## Portfolio plots for each analysis unit based on a rotation to 2070  showing the efficient frontier species ratios across risk/return choices. 
 
 ```{r plot_pf, fig.height = 15, fig.width = 12}
 pdfOutput <- TRUE
@@ -458,7 +464,7 @@ tab
 
 ## Predicted BGC subzone/variants for each future time period from 30 climate models
 
-Ratio of predicted BGC units for each landscape/BGC analysis unit (multiple locations) from CCISS function.
+Ratio of predicted BGC units for each BGC analysis unit (multiple locations) from CCISS function.
 
 ```{r BGC_plot, fig.width=10, fig.height=8}
 BGCPred <- as.data.table(CCISSPred[[2]])
@@ -485,7 +491,9 @@ gr <- foreach(unit = unique(BGCPred$BGC_analysis), .combine = c) %do% {
 grid.arrange(grobs = gr, ncol = 3)
 ```
 
-## Estimated site index of portfolio species in each analysis unit for each time period
+## Estimated site index for each portfolio species of analysis units in each future period
+
+This should probably SI averaged over al future scenarios. Could also have CI bars on each bar.
 
 ```{r SI_check, fig.width = 10, fig.height = 12}
 gr <- foreach(unit = unique(SSPredFull$BGC_analysis),.combine = c) %do% {
