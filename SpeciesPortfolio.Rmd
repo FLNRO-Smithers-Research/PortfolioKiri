@@ -9,10 +9,10 @@ output:
     toc: yes
 ---
 
-This report presents a range of risk-return optimized portfolios of species for reforestation generated using Markowitz Modern Portfolio Theory (MPT). The analysis uses the forecast site series level changes to species feasibility from the Climate Change-Informed Species Selection (CCISS) tool and site index by site series growth information (SIBEC) to calculate the optimal mix of tree species given the modelled uncertainty in future climates up to 2070.
-The model uses the CCISS model to forecast future BGCs for 30 GCM/carbon scenarios for all locations and aligns the current site series with future potential site series via edatopic overlap. A MPT portfolio is constructed for each future climate using data on tree species suitability, site index by site series information, and covariance of species in all current and potenial future site series. Probabalistic loss rates are modelled based on species suitability. 
-User inputs to the script are training point locations that will represent BGC-based analysis units (e.g. MHmm1_high and MHmm1_low). 
-This report is generated from Rmarkdown.
+This report presents a range of risk-return optimized portfolios of tree species generated using Markowitz Modern Portfolio Theory (MPT). The analysis uses forecast site series level changes to species feasibility from the Climate Change-Informed Species Selection (CCISS) tool, and site index by site series growth information (SIBEC) to calculate the optimal mix of tree species given the modelled uncertainty in future climates up to 2070.
+The CCISS model forecasts future BGCs for 30 GCM/carbon scenarios for all locations, and aligns the current site series with future potential site series via edatopic overlap. We use a monte carlo approach to simulate growth of each tree species using site index data and stochastic losses based on predicted suitability. The portfolio analysis uses the modelled growth rate and a species covariance matrix to optimise the efficient frontier.
+User inputs to the script are spatial point locations with climate data that will represent BGC-based analysis units (e.g. MHmm1_high and MHmm1_low). Users can also adjust the min and max values for each species and the minimum value to be included in the portfolio. 
+This report is generated from Rmarkdown, and sources functions from python and C++.
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
