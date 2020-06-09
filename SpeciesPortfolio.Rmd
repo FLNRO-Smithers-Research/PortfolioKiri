@@ -444,12 +444,9 @@ outAll <- foreach(BGC = Units, .combine = loopCombine,
 
 ```
 
-<<<<<<< HEAD
-## Portfolio plots for each analysis unit based on a rotation period to 2070  showing the efficient frontier species ratios across risk/return choices. 
-=======
->>>>>>> 3d21ba2b180c2198d2583b15c397af64d77e0f40
 
-## Plots of efficient frontier for each analysis unit based on a rotation to 2070 showing species ratios across risk/return choices. 
+## Portfolio plots for each analysis unit based on a rotation period to 2070  showing the efficient frontier species ratios across risk/return choices. 
+
 
 ```{r plot_pf, fig.height = 15, fig.width = 12, fig.cap = "Efficient frontiers for future portfolios by analysis unit"}
 pdfOutput <- F
