@@ -436,7 +436,7 @@ outAll <- foreach(BGC = Units, .combine = loopCombine,
 
 ```
 
-## Portfolio plots for each analysis unit based on a rotation to 2070  showing the efficient frontier species ratios across risk/return choices. 
+## Portfolio plots for each analysis unit based on a rotation period to 2070  showing the efficient frontier species ratios across risk/return choices. 
 
 ```{r plot_pf, fig.height = 15, fig.width = 12}
 pdfOutput <- TRUE
@@ -453,7 +453,7 @@ grid.arrange(grobs = outAll$Graph, ncol = 3)
 
 ```{r table}
 MSWeights <- dcast(outAll$MaxS,Unit ~ Spp)
-MSWeights[MSWeights < 0.01] <- NA
+MSWeights[MSWeights < 0.01] <- NA ## minimum percent for species to appear in portfolio
 MSWeights <- MSWeights[,c(T,colSums(MSWeights[,-1], na.rm = T) > 0)]
 MSWeights[is.na(MSWeights)] <- 0
 cols <- c(names(MSWeights)[!names(MSWeights) %in% Trees],names(MSWeights)[names(MSWeights) %in% Trees])
@@ -475,7 +475,7 @@ totNum <- BGCPred[,.(Total = sum(Num)), keyby = .(FuturePeriod,BGC_analysis)]
 BGCPred <- totNum[BGCPred]
 BGCPred[,Prop := Num/Total]
 
-period <- 2025
+period <- 2055
 BGCPred <- BGCPred[FuturePeriod == period & Prop > 0.05,]
 
 gr <- foreach(unit = unique(BGCPred$BGC_analysis), .combine = c) %do% {
