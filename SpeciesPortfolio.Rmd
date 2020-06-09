@@ -231,12 +231,12 @@ loopCombine <- function(a,b){
 
 Specify model parameters
 
-```{r model parameters}
+```{r model parameters, out.width=8, results = 'hold'}
 ### Probabilities attached to each suitability
 SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.5,0.5,1,4), 
                        "NoMort" = c(70,60,50,30)) ####ProbDead- out of 100 trees, how many will die each year at each suitability. NoMort- Percent of time no mortality
 
-flextable(SuitProb)
+ft1 <- flextable(SuitProb) %>% set_caption("Probability parameters for tree death")
 
 Trees <- unique(SIBEC$TreeSpp)
 myColours <- data.table(TreeCode = Trees)
@@ -258,7 +258,7 @@ boundDat[,`:=`(minWt = 0, maxWt = 1)]
 # boundDat[Spp == "Pl",minWt := 0.1] ## set min weight for Pl to 0.1
 
 ##############
-flextable(boundDat)
+ft2 <- flextable(boundDat) %>% set_caption("Min and max weights in portfolio")
 
 notUse <- boundDat$Spp[boundDat$maxWt == 0]
 if(length(notUse > 0)){
@@ -268,6 +268,9 @@ nSpp <- length(Trees)
 treeList <- Trees
 
 minAccept <- 0.1 ##min acceptable weight in porfolio - if lower, will remove and re-optimize
+
+ft1
+ft2
 
 ```
 
@@ -380,6 +383,8 @@ outAll <- foreach(BGC = Units, .combine = loopCombine,
       efAll <- dcast(efAll,Return ~ Spp, fun.aggregate = function(x){sum(x)/(length(SL))})
       efAll <- efAll[complete.cases(efAll),]
       efAll$RealRet <- efAll$RealRet/max(efAll$RealRet) ##standardise return
+      RetCurve <- approx(efAll$RealRet,efAll$Sd,xout = 0.9)
+      ret90 <- RetCurve$y
       maxSharpe <- efAll[efAll$Sharpe == max(efAll$Sharpe),-c("Return","Sharpe")]
       maxSPos <- maxSharpe$Sd
       maxSharpe <- t(maxSharpe) %>% as.data.frame() %>% mutate(Spp = rownames(.)) %>% set_colnames(c("value","Spp"))
@@ -393,7 +398,8 @@ outAll <- foreach(BGC = Units, .combine = loopCombine,
       p1 <- ggplot(efAll[efAll$variable != "RealRet",],aes(x = Sd, y = value,group = variable))+
         geom_area(aes(fill = variable), size = 0.00001, col = "black", stat = "identity")+
         colScale +
-        geom_vline(xintercept = maxSPos)+
+        geom_vline(xintercept = maxSPos, linetype = "dashed")+
+        geom_vline(xintercept = ret90, colour = "#040404",linetype = "dashed")+
         geom_line(data = efAll[efAll$variable == "RealRet",], aes(x = Sd, y = value))+
         scale_x_reverse() +
         xlab("Volatility")+
