@@ -273,7 +273,7 @@ Trees <- myColours$TreeCode
 ##set min and max weights for each species
 boundDat <- data.table(Spp = Trees)
 boundDat[,`:=`(minWt = 0, maxWt = 1)]
-boundDat2 <- transpose(boundDat) %>% row_to_names (row_number = 1)
+boundDat2 <-  boundDat %>% pivot_longer (Spp) %>% dplyr::select (-name) %>% pivot_wider(names_from = value) %>%   row_to_names (row_number = 3)
 
 
 ##adjust min and max weights (or remove species)
