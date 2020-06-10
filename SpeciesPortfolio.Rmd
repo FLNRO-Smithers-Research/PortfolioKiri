@@ -107,7 +107,7 @@ SSPredFull <- SSPredFull[analUnits]
 SSPredSave <- SSPredFull
 ```
 
-
+## Map of input locations
 
 ```{r location map}
 
@@ -306,7 +306,6 @@ clusterCall(cl, worker.init)
 registerDoParallel(cl)
 ```
 
-Loop through BGCs and Subzones, run portfolio optimisation, output graphics and optimum weights
 
 ```{r portfolio_function, message = TRUE}
 timePeriods = c(2000,2025,2055)
