@@ -275,11 +275,6 @@ boundDat <- data.table(Spp = Trees)
 boundDat[,`:=`(minWt = 0, maxWt = 1)]
 boundDat2 <-  data.table::transpose(as.data.frame(boundDat))%>% row_to_names (row_number = 1)
 
-# boundDat2 <-  boundDat %>%  pivot_wider() %>% as.tibble()
-# boundDat2$Spp <- as.factor(boundDat2$Spp)
-# boundDat3 <- boundDat2 %>% pivot_wider(names_from = Spp), values_from = c(minWt, maxWt)) #dplyr::select (-name) %>% group_by (Spp)  %>% as.data.frame()  
-
-
 ##adjust min and max weights (or remove species)
 ## see below examples
 # boundDat[Spp == "Hw",maxWt := 0] ##remove Hw
@@ -348,12 +343,12 @@ outAll <- foreach(BGC = Units, .combine = loopCombine,
                          SS.sum$FuturePeriod <- as.numeric(SS.sum$FuturePeriod)
                          if(length(timePeriods) == 1){
                            temp <- SS.sum
-                           temp$FuturePeriod <- SS.sum$FuturePeriod[1]+85
+                           temp$FuturePeriod <- SS.sum$FuturePeriod[1]+55
                            SS.sum <- rbind(SS.sum, temp)
                          }
                          
                          if(!is.null(SS.sum)){
-                           annualDat <- data.frame("Year" = seq(2000,2100,1))
+                           annualDat <- data.frame("Year" = seq(2000,2070,1))
                          
                            output <- data.frame("year" = annualDat$Year)
                            
@@ -362,23 +357,23 @@ outAll <- foreach(BGC = Units, .combine = loopCombine,
                              DatSpp <- SS.sum[SS.sum$Spp == treeList[k],]
                              
                              dat <- data.frame("Period" = rescale(as.numeric(DatSpp$FuturePeriod), 
-                                                                  to = c(2000,2085)), 
+                                                                  to = c(2000,2055)), 
                                                "SIBEC" = DatSpp$MeanSI, "Suit" = DatSpp$MeanSuit)
                              dat$SIBEC <- dat$SIBEC/50 ##for mean annual increment
                              dat <- merge(dat, SuitProb, by = "Suit")
-                             s <- approx(dat$Period, dat$SIBEC, n = 101) ##Smooth SI
-                             p <- approx(dat$Period, dat$ProbDead, n = 101) ###Smooth Prob Dead
-                             m <- approx(dat$Period, dat$NoMort, n = 101) ##Smooth No Mort
+                             s <- approx(dat$Period, dat$SIBEC, n = 71) ##Smooth SI
+                             p <- approx(dat$Period, dat$ProbDead, n = 71) ###Smooth Prob Dead
+                             m <- approx(dat$Period, dat$NoMort, n = 71) ##Smooth No Mort
                              
                              ###data frame of annual data
-                             annualDat <- data.frame("Year" = seq(2000,2100,1), "Growth" = s[["y"]], 
+                             annualDat <- data.frame("Year" = seq(2000,2070,1), "Growth" = s[["y"]], 
                                                      "MeanDead" = p[["y"]], "NoMort" = m[["y"]]) ##create working data
                              
                              Returns <- simGrowthCpp(DF = annualDat)
                              tmpR <- c(0,Returns)
                              assets <- Returns - tmpR[-length(tmpR)]
-                             temp <- data.frame(Spp = rep(treeList[k],101), 
-                                                Year = 1:101, Returns = Returns)
+                             temp <- data.frame(Spp = rep(treeList[k],71), 
+                                                Year = 1:71, Returns = Returns)
                              output <- cbind(output, assets)
                            } ## for each tree species
                            
