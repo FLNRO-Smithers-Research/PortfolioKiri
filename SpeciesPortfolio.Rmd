@@ -38,6 +38,7 @@ require(tufte)
 require(Hmisc)
 require(janitor)
 require(tidyverse)
+require(Rmisc)
 ```
 
 
@@ -66,9 +67,11 @@ if(dir.exists("C:/users/whmacken/Sync")){
 ###Read in data
 SuitTable <- fread("InputsGit/Feasibility_v11_21.csv") ##tree spp suitability
 SuitTable <- unique(SuitTable)
+SuitNew <- fread("InputsGit/Feas_toAdd.csv")
 
 colnames(SuitTable)[2:4] <- c("SS_NoSpace","Spp","Suitability")
 SuitTable <- SuitTable[,c("BGC","SS_NoSpace","Spp","Suitability")]
+SuitTable <- rbind(SuitTable, SuitNew)
 
 SIBEC <- fread("InputsGit/PredSI_May2020.csv") 
 SIBECnew <- fread("InputsGit/SI_to_add.csv")
@@ -230,6 +233,7 @@ cleanData <- function(SNum,Trees,timePer){
   SS.sum$MeanSuit[SS.sum$MeanSuit == 5] <- 4
   SS.sum <- unique(SS.sum)
   SS.sum <- SS.sum[order(SS.sum$Spp,SS.sum$FuturePeriod),]
+  #SS.sum$MeanSuit[is.na(SS.sum$MeanSuit)] <- 3
   return(SS.sum)
 }
 
@@ -238,14 +242,15 @@ combineList <- function(...) {##Combine multiple dataframe in foreach loop
 }
 
 loopCombine <- function(a,b){
-  G <- c(a$Graph,b$Graph)
+  G <- rbind(a$GraphDat,b$GraphDat)
   df <- rbind(a$MaxS,b$MaxS)
-  return(list(Graph = G, MaxS = df))
+  return(list(GraphDat = G, MaxS = df))
 }
 
 ```
 
 ## Model Parameters
+
 Minimum and maximum portfolio ratios can be set for the entire portfolio or by species. These limits will be accounted for in the portfolio often by rebalancing it to include more of an species with similar environmental responses. For example, capping Hw abundance in the portfolio will commonly lead to an increase in the amount of Cw in the portfolio.
 
 ```{r model parameters, out.width=8, results = 'hold'}
@@ -290,14 +295,9 @@ if(length(notUse > 0)){
 }
 nSpp <- length(Trees)
 treeList <- Trees
-
-
-#ft1
-ft2
-
 ```
 
-Species with less than weight < `r minAccept*100`% of final portfolio will be removed.
+
 
 
 ```{r parallelSetup, results = 'hide'}
@@ -422,26 +422,13 @@ outAll <- foreach(BGC = Units, .combine = loopCombine,
       maxSharpe$SSCurrent <- selectBGC
       maxSharpe$Unit <- BGC
       maxSharpe$SetRet <- ret90Props$value
+      maxSharpe$SetRet[maxSharpe$Spp == "Sd"] <- ret90
       efAll <- efAll[,-c("Return","Sharpe")]
       efAll <- melt(efAll, id.vars = "Sd")
       efAll$variable <- factor(efAll$variable, levels = sort(unique(as.character(efAll$variable))))
+      efAll$Unit <- BGC
     
-      
-      p1 <- ggplot(efAll[efAll$variable != "RealRet",],aes(x = Sd, y = value,group = variable))+
-        geom_area(aes(fill = variable), size = 0.00001, col = "grey50", stat = "identity")+
-        colScale +
-        geom_vline(xintercept = maxSPos, colour = "blue", linetype = "twodash")+
-        geom_vline(xintercept = ret90, colour = "grey27",linetype = "dashed")+
-        geom_line(data = efAll[efAll$variable == "RealRet",], 
-                  aes(x = Sd, y = value), colour = "black",linetype = "F1", size = .75)+
-        scale_x_reverse() +
-        xlab("Max Return --> Minimized Risk")+
-        ylab("Portfolio Ratio")+
-        guides(fill=guide_legend("Species"))+
-        ggtitle(paste(BGC , "analysis unit", sep = " "))+
-        theme_few()
-      
-      list(Graph = list(p1), MaxS = maxSharpe)
+      list(GraphDat = efAll, MaxS = maxSharpe)
     }
     
   }
@@ -451,17 +438,36 @@ outAll <- foreach(BGC = Units, .combine = loopCombine,
 ```
 
 
-## Portfolio plots for each analysis unit based on a rotation period to 2070showing the efficient frontier species ratios across risk/return choices. 
+## Portfolio Efficient Frontier 
+
+Graphs for each analysis unit based on a rotation period to 2070 showing the efficient frontier species ratios across risk/return choices. 
 
 
-```{r plot_pf, fig.height = 15, fig.width = 12, fig.cap = "Efficient frontiers for future portfolios by analysis unit"}
+```{r plot_pf, fig.height = 13, fig.width = 12, fig.cap = "Efficient frontiers for future portfolios by analysis unit"}
 pdfOutput <- F
 if(pdfOutput){
   pdf("PortfolioGraphs.pdf", width = 12, height = 15)
   grid.arrange(grobs = outAll$Graph, ncol = 3)
   dev.off()
 }
-grid.arrange(grobs = outAll$Graph, ncol = 3)
+
+efAll <- outAll$GraphDat
+intDat <- outAll$MaxS
+ggplot(efAll[efAll$variable != "RealRet",],aes(x = Sd, y = value,group = variable))+
+  geom_area(aes(fill = variable), size = 0.00001, col = "grey50", stat = "identity")+
+  colScale +
+  geom_vline(data = intDat[intDat$Spp == "Sd",], aes(xintercept = value,colour = "blue"), linetype = "twodash")+
+  geom_vline(data = intDat[intDat$Spp == "Sd",], aes(xintercept = SetRet,colour = "grey27"),linetype = "dashed")+
+  geom_line(data = efAll[efAll$variable == "RealRet",], 
+            aes(x = Sd, y = value,colour = "black"),linetype = "F1",size = .75)+
+  scale_colour_identity(name = "", guide = 'legend', labels = c("Return","MaxSharpe","90%"))+
+  scale_x_reverse() +
+  xlab("Max Return --> Minimized Risk")+
+  ylab("Portfolio Ratio")+
+  guides(fill=guide_legend("Species"))+
+  theme_few()+
+  facet_wrap(.~Unit)
+
 ```
 
 
@@ -479,10 +485,9 @@ tab
 ```
 
 ```{r currPort}
-timePeriods = 2000
+timePeriodsCurr = 2000
 
 Units <- unique(SSPredFull$BGC_analysis)
-BGC <- "CWHdm"
 outAllCurr <- foreach(BGC = Units, .combine = rbind,
                   .packages = c("reshape2","Rcpp","magrittr","reticulate",
                                 "data.table","foreach","ggplot2","ggthemes","scales"), 
@@ -504,9 +509,9 @@ outAllCurr <- foreach(BGC = Units, .combine = rbind,
                        .noexport = c("simGrowthCpp")) %do% {
                          
                          #cat("Optimising site",SNum,"...\n")
-                         SS.sum <- cleanData(SNum, Trees, timePer = timePeriods)
+                         SS.sum <- cleanData(SNum, Trees, timePer = timePeriodsCurr)
                          SS.sum$FuturePeriod <- as.numeric(SS.sum$FuturePeriod)
-                         if(length(timePeriods) == 1){
+                         if(length(timePeriodsCurr) == 1){
                            temp <- SS.sum
                            temp$FuturePeriod <- SS.sum$FuturePeriod[1]+85
                            SS.sum <- rbind(SS.sum, temp)
@@ -628,35 +633,40 @@ period <- 2055
 BGCPred <- BGCPred[FuturePeriod == period & Prop > 0.05,]
 BGCPred[,Prop := Num/sum(Num), by = BGC_analysis]
 
-ggplot(BGCPred, aes(x = BGC_analysis,y = Prop, fill = BGC.pred))+
+ggplot(BGCPred, aes(x = BGC_analysis,y = Prop, fill = BGC.pred, label = BGC.pred))+
   geom_bar(stat = 'identity')+
+  geom_text(size = 2, position = position_stack(vjust = 0.5), angle = 20)+
   theme_few()+
-  theme(axis.text.x = element_text(angle = 90))
+  theme(axis.text.x = element_text(angle = 90), legend.position = "none")
 ```
 
 ## Estimated site index for each portfolio species of analysis units in each future period
 
 ```{r SI_check, fig.width = 10, fig.height = 14, fig.cap = "Mean and 95% CI for SI within Spp and Period, weighted by SSprob"}
 
-weighted_ci <- function(x, weights, conf.level = 0.95) { ## main idea from Hack-R on Stack Overflow
-    nx <- length(x)
-    df <- nx - 1
-    vx <- wtd.var(x, weights, normwt = F)
-    mx <- weighted.mean(x, weights)
-    stderr <- sqrt(vx/nx)
-    tstat <- mx/stderr
-    alpha <- 1 - conf.level
-    cint <- qt(1 - alpha/2, df)
-    cint <- tstat + c(-cint, cint)
-    cint * stderr
-}
+# weighted_ci <- function(x, weights, conf.level = 0.95) { ## main idea from Hack-R on Stack Overflow
+#     nx <- length(x)
+#     df <- nx - 1
+#     vx <- wtd.var(x, weights, normwt = F)
+#     mx <- weighted.mean(x, weights)
+#     stderr <- sqrt(vx/nx)
+#     tstat <- mx/stderr
+#     alpha <- 1 - conf.level
+#     cint <- qt(1 - alpha/2, df)
+#     cint <- tstat + c(-cint, cint)
+#     cint * stderr
+# }
 
 gr <- foreach(unit = unique(SSPredFull$BGC_analysis),.combine = c) %do% {
   sub <- SSPredFull[BGC_analysis == unit,]
   sub <- SIBEC[sub, on = "SS_NoSpace"]
-  sub[,SI := weighted.mean(MeanPlotSiteIndex,SSprob), by = .(FuturePeriod, TreeSpp)]
-  sub[,CI_min := weighted_ci(MeanPlotSiteIndex,SSprob)[1], by = .(FuturePeriod, TreeSpp)]
-  sub[,CI_max := weighted_ci(MeanPlotSiteIndex,SSprob)[2], by = .(FuturePeriod, TreeSpp)]
+  sub[,SI := mean(MeanPlotSiteIndex), by = .(FuturePeriod, TreeSpp)]
+  sub[,CI_min := CI(MeanPlotSiteIndex)[3], by = .(FuturePeriod, TreeSpp)]
+  sub[,CI_max := CI(MeanPlotSiteIndex)[1], by = .(FuturePeriod, TreeSpp)]
+  sub <- sub[!is.na(TreeSpp) & !is.nan(CI_min),]
+  # sub[,SI := weighted.mean(MeanPlotSiteIndex,SSprob), by = .(FuturePeriod, TreeSpp)]
+  # sub[,CI_min := weighted_ci(MeanPlotSiteIndex,SSprob)[1], by = .(FuturePeriod, TreeSpp)]
+  # sub[,CI_max := weighted_ci(MeanPlotSiteIndex,SSprob)[2], by = .(FuturePeriod, TreeSpp)]
   
   p1 <- ggplot(sub, aes(x = TreeSpp, y = SI, fill = FuturePeriod))+
     geom_bar(stat = "identity", position = "dodge")+
@@ -669,3 +679,11 @@ gr <- foreach(unit = unique(SSPredFull$BGC_analysis),.combine = c) %do% {
 
 grid.arrange(grobs = gr, ncol = 2)
 ```
+
+## Model parameters
+
++ The climate change portfolio was run using predictions up to `r max(timePeriods)+15`.
++ Minimum weight to be included in the portfolio is set at`r minAccept*100`%.
++ The fixed return line is set at `r returnValue`
++ The table below shows the min and max values for each species in the portfolio
+`r ft2`
