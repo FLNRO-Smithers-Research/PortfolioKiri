@@ -121,7 +121,7 @@ SSPredSave <- SSPredFull
 
 ## Create m ap of test locations by analysis unit
 locations <- fread("./InputsGit/SunshineCoast_SamplePoints_New.csv") 
-locations2 <- locations %>% rename(latitude = "ycoord", longitude = "xcoord", elevation = "elevation_1") %>% dplyr::select (id, BGC_analysis,latitude,longitude)
+locations2 <- locations %>% dplyr::rename(latitude = "ycoord", longitude = "xcoord", elevation = "elevation_1") %>% dplyr::select (id, BGC_analysis,latitude,longitude)
 BGCmap <- st_read(dsn = paste0(cloud_dir, "PortfolioFiles/SunshineCoast.gpkg"), layer = "BGC_Dissolved")
 
 locations2 <- st_as_sf(locations2, coords = c("longitude","latitude"), crs = 4326, agr = "constant") %>%
