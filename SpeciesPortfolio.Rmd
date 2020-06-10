@@ -147,7 +147,7 @@ names(myPal) <- cols$TreeCode
 
 
 library(unikn)
-seecol(myPal, hex = T, rgb = F)
+#seecol(myPal, hex = T, rgb = F)
 ```
 
 
@@ -273,7 +273,11 @@ Trees <- myColours$TreeCode
 ##set min and max weights for each species
 boundDat <- data.table(Spp = Trees)
 boundDat[,`:=`(minWt = 0, maxWt = 1)]
-boundDat2 <-  boundDat %>% pivot_longer (Spp) %>% dplyr::select (-name) %>% pivot_wider(names_from = value) %>%   row_to_names (row_number = 3)
+boundDat2 <-  data.table::transpose(as.data.frame(boundDat))%>% row_to_names (row_number = 1)
+
+# boundDat2 <-  boundDat %>%  pivot_wider() %>% as.tibble()
+# boundDat2$Spp <- as.factor(boundDat2$Spp)
+# boundDat3 <- boundDat2 %>% pivot_wider(names_from = Spp), values_from = c(minWt, maxWt)) #dplyr::select (-name) %>% group_by (Spp)  %>% as.data.frame()  
 
 
 ##adjust min and max weights (or remove species)
