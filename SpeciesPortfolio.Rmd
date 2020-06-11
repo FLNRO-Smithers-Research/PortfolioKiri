@@ -14,7 +14,7 @@ The CCISS model forecasts future BGCs for 30 GCM/carbon scenarios for all locati
 User inputs to the script are spatial point locations with climate data that will represent BGC-based analysis units (e.g. MHmm1_high and MHmm1_low). Users can also adjust the min and max values for each species and the minimum value to be included in the portfolio. 
 This report is generated from Rmarkdown, and sources functions from python and C++.
 
-```{r setup, include=FALSE}
+```{r setup, include=FALSE, message = FALSE}
 knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
 require(dplyr)
 require(ggplot2)
@@ -117,16 +117,20 @@ SSPredSave <- SSPredFull
 
 ## Map of input locations
 
-```{r location map}
+```{r location map setup, message = FALSE, echo= FALSE, include=FALSE}
 
-## Create m ap of test locations by analysis unit
+## Create map of test locations by analysis unit
 locations <- fread("./InputsGit/SunshineCoast_SamplePoints_New.csv") 
-locations2 <- locations %>% dplyr::rename(latitude = "ycoord", longitude = "xcoord", elevation = "elevation_1") %>% dplyr::select (id, BGC_analysis,latitude,longitude)
+locations2 <- locations %>% dplyr::rename(latitude = "ycoord", longitude = "xcoord", elevation = "elevation_1") %>%
+  dplyr::select (id, BGC_analysis,latitude,longitude)
 BGCmap <- st_read(dsn = paste0(cloud_dir, "PortfolioFiles/SunshineCoast.gpkg"), layer = "BGC_Dissolved")
 
 locations2 <- st_as_sf(locations2, coords = c("longitude","latitude"), crs = 4326, agr = "constant") %>%
   st_transform(st_crs(BGCmap))
 
+```
+
+```{r location map}
 #tmaptools::palette_explorer() ###tool for choosing colours
 
 tmap_mode("view")
@@ -438,15 +442,8 @@ outAll <- foreach(BGC = Units, .combine = loopCombine,
 ```
 
 
-<<<<<<< HEAD
-## Portfolio plots for each analysis unit based on a rotation period to 2070 showing the efficient frontier species ratios across risk/return choices. 
-=======
 ## Portfolio Efficient Frontier 
->>>>>>> 0c5e738d5279e363eead29f04bc372dc186a37c2
-
-Graphs for each analysis unit based on a rotation period to 2070 showing the efficient frontier species ratios across risk/return choices. 
-
-
+Portfolio plots for each analysis unit based on a rotation period to 2070 showing the efficient frontier species ratios across risk/return choices.
 ```{r plot_pf, fig.height = 13, fig.width = 12, fig.cap = "Efficient frontiers for future portfolios by analysis unit"}
 pdfOutput <- F
 if(pdfOutput){
@@ -469,7 +466,7 @@ ggplot(efAll[efAll$variable != "RealRet",],aes(x = Sd, y = value,group = variabl
   xlab("Max Return --> Minimized Risk")+
   ylab("Portfolio Ratio")+
   guides(fill=guide_legend("Species"))+
-  theme_few()+
+  theme_few() +   
   facet_wrap(.~Unit)
 
 ```
@@ -492,10 +489,6 @@ tab
 timePeriodsCurr = 2000
 
 Units <- unique(SSPredFull$BGC_analysis)
-<<<<<<< HEAD
-#BGC <- "CWHdm"
-=======
->>>>>>> 0c5e738d5279e363eead29f04bc372dc186a37c2
 outAllCurr <- foreach(BGC = Units, .combine = rbind,
                   .packages = c("reshape2","Rcpp","magrittr","reticulate",
                                 "data.table","foreach","ggplot2","ggthemes","scales"), 
@@ -628,7 +621,7 @@ ggplot(dat, aes(x = variable, y = value, group = Spp, fill = Spp))+
 
 Ratio of predicted BGC units for each BGC analysis unit (multiple locations) from CCISS function.
 
-```{r BGC_plot, fig.width=10, fig.height=6, fig.cap = "Ratio of predicted BGCs in each analysis unit"}
+```{r BGC_plot, fig.width=10, fig.height=6, fig.cap = "Ratio of predicted BGCs in each analysis unit 2040-2070"}
 BGCPred <- as.data.table(CCISSPred[[2]])
 setkey(BGCPred, SiteNo)
 BGCPred <- BGCPred[analUnits]
