@@ -466,8 +466,8 @@ intDat <- outAll$MaxS
 ggplot(efAll[efAll$variable != "RealRet",],aes(x = Sd, y = value,group = variable))+
   geom_area(aes(fill = variable), size = 0.00001, col = "grey50", stat = "identity")+
   colScale +
-  geom_vline(data = intDat[intDat$Spp == "Sd",], aes(xintercept = value,colour = "blue"), linetype = "twodash", size = .5)+
-  geom_vline(data = intDat[intDat$Spp == "Sd",], aes(xintercept = SetRet,colour = "grey27"),linetype = "dashed", size = .5)+
+  geom_vline(data = intDat[intDat$Spp == "Sd",], aes(xintercept = value,colour = "blue"), linetype = "twodash", size = .75)+
+  geom_vline(data = intDat[intDat$Spp == "Sd",], aes(xintercept = SetRet,colour = "grey52"),linetype = "dashed", size = .75)+
   geom_line(data = efAll[efAll$variable == "RealRet",], 
             aes(x = Sd, y = value,colour = "black"),linetype = "F1",size = .75)+
   scale_colour_identity(name = "", guide = 'legend', labels = c("Return","MaxSharpe","90%"))+
@@ -648,7 +648,7 @@ BGCPred[,Prop := Num/sum(Num), by = BGC_analysis]
 
 ggplot(BGCPred, aes(x = BGC_analysis,y = Prop, fill = BGC.pred, label = BGC.pred))+
   geom_bar(stat = 'identity')+
-  geom_text(size = 2, position = position_stack(vjust = 0.5), angle = 20)+
+  geom_text(size = 3, position = position_stack(vjust = 0.5), angle = 45)+
   theme_few()+
   theme(axis.text.x = element_text(angle = 90), legend.position = "none")
 ```
@@ -685,7 +685,7 @@ gr <- foreach(unit = unique(SSPredFull$BGC_analysis),.combine = c) %do% {
     geom_bar(stat = "identity", position = "dodge")+
     geom_errorbar(aes(ymin = CI_min, ymax = CI_max), width = 0.2, position = position_dodge(width = 0.9))+
     theme_few()+
-    geom_hline(yintercept = c(10,20), colour = "black")+
+    geom_hline(yintercept = c(10,20, 30), colour = "black")+
     ggtitle(unit)
   list(p1)
 }
