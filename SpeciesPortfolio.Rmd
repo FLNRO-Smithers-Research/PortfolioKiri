@@ -466,7 +466,7 @@ ggplot(efAll[efAll$variable != "RealRet",],aes(x = Sd, y = value,group = variabl
   ylab("Portfolio Ratio")+
   guides(fill=guide_legend("Species"))+
   theme_few()+
-  facet_wrap(.~Unit)
+  facet_wrap(.~Unit, scales = "free_x")
 
 ```
 
