@@ -637,6 +637,13 @@ weighted_ci <- function(x, weights, conf.level = 0.95) { ## main idea from Hack-
     cint * stderr
 }
 
+SSPredFull <- edatopicSubset(SSPredOrig, analUnits, eda)
+curr <- SSPredFull[FuturePeriod == 2025,]
+setkey(curr, BGC_analysis, SSCurrent)
+curr <- unique(curr, by = c("BGC_analysis","SSCurrent"))
+curr[,`:=`(SSprob = 1, FuturePeriod = 2000)]
+SSPredFull <- rbind(SSPredFull, curr)
+
 gr <- foreach(unit = unique(SSPredFull$BGC_analysis),.combine = rbind) %do% {
   sub <- SSPredFull[BGC_analysis == unit,]
   tNum <- nrow(sub)
@@ -648,7 +655,9 @@ gr <- foreach(unit = unique(SSPredFull$BGC_analysis),.combine = rbind) %do% {
   sub[,SI := weighted.mean(MeanPlotSiteIndex,SSprob), by = .(FuturePeriod, TreeSpp)]
   sub[,CI_min := weighted_ci(MeanPlotSiteIndex,SSprob)[1], by = .(FuturePeriod, TreeSpp)]
   sub[,CI_max := weighted_ci(MeanPlotSiteIndex,SSprob)[2], by = .(FuturePeriod, TreeSpp)]
-  sub <- sub[!is.na(TreeSpp) & !is.nan(CI_min),]
+  sub <- sub[!is.na(TreeSpp),]
+  sub[is.nan(CI_min),`:=`(CI_min = SI,CI_max = SI)]
+  sub <- sub[FuturePeriod != 2085,]
   # sub[,SI := weighted.mean(MeanPlotSiteIndex,SSprob), by = .(FuturePeriod, TreeSpp)]
   # sub[,CI_min := weighted_ci(MeanPlotSiteIndex,SSprob)[1], by = .(FuturePeriod, TreeSpp)]
   # sub[,CI_max := weighted_ci(MeanPlotSiteIndex,SSprob)[2], by = .(FuturePeriod, TreeSpp)]
