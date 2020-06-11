@@ -2,25 +2,25 @@ TreeCode,Code,Use,EnglishName,HexColour
 Acb,POPUBAL,x,balsam poplar,#202020
 Act,POPUTRI,x,black cottonwood,#303030
 At,POPUTRE,x,trembling aspen,#404040
-Ba,ABIEAMA,x,amabilis fir,#00CC66
-Bg,ABIEGRA,x,grand fir,#4C9900
-Bl,ABIELAS,x,subalpine fir,#9933FF
+Ba,ABIEAMA,x,amabilis fir,#006600
+Bg,ABIEGRA,x,grand fir,#DBFF33
+Bl,ABIELAS,x,subalpine fir,#D776FF
 Bp,ABIEPRO,x,noble fir,#999900
-Cw,THUJPLI,x,western redcedar,#006600
-Dr,ALNURUB,x,red alder,#505050
+Cw,THUJPLI,x,western redcedar,#00CC66
+Dr,ALNURUB,x,red alder,#808080
 Ea,BETUNEO,x,Alaska paper birch,#606060
 Ep,BETUPAP,x,common paper birch,#707070
-Ew,BETUOCC,x,water birch,#808080
+Ew,BETUOCC,x,water birch,
 Fd,PSEUMEN,x,Douglas-fir,#FFD601
 Fdc,PSEUMEN2,x,coast Douglas-fir,#FFD601
-Fdi,PSEUMEN1,x,Rocky Mountain Douglas-fir,
+Fdi,PSEUMEN1,x,Rocky Mountain Douglas-fir,#FFD601
 Gp,CORNNUT,x,western flowering dogwood,#FFFFFF
-Hm,TSUGMER,x,mountain hemlock,#D776FF
+Hm,TSUGMER,x,mountain hemlock,#9933FF
 Hw,TSUGHET,x,western hemlock,#A9FF85
 Jr,JUNISCO,x,Rocky Mountain juniper,
 La,LARILYA,x,subalpine larch,
 Lt,LARILAR,x,tamarack,
-Lw,LARIOCC,x,western larch,#DBFF33
+Lw,LARIOCC,x,western larch,#DA523E
 Mb,ACERMAC,x,bigleaf maple,#0C4954
 Mv,ACERCIR,x,vine maple,
 Pa,PINUALB,x,whitebark pine,#520C54
@@ -34,11 +34,11 @@ Py,PINUPON,x,ponderosa pine,#F3861A
 Qg,QUERGAR,x,Garry oak,#FFFF66
 Ra,ARBUMEN,x,arbutus,#909090
 Sb,PICEMAR,x,black spruce,#2B1247
-Se,PICEENG,x,Engelmann spruce,
-Ss,PICESIT,x,Sitka spruce,#DA523E
-Sw,PICEGLA,x,white spruce,
+Se,PICEENG,x,Engelmann spruce,#ACEBF7
+Ss,PICESIT,x,Sitka spruce,#122dc8
+Sw,PICEGLA,x,white spruce,#ACEBF7
 Sx,PICEENE,x,interior spruce,#ACEBF7
-Sxs,PICEXLU,x,hybrid Sitka spruce,
+Sxs,PICEXLU,x,hybrid Sitka spruce,#606ba7
 Tw,TAXUBRE,x,western yew,
 Up,MALUFUS,x,Pacific crab apple,
 Yc,CHAMNOO,x,yellow-cedar,#510681
