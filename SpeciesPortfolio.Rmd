@@ -654,42 +654,71 @@ ggplot(BGCPred, aes(x = BGC_analysis,y = Prop, fill = BGC.pred, label = BGC.pred
 
 ### Estimated site index for each portfolio species of analysis units in each future period
 
-```{r SI_check, fig.width = 10, fig.height = 14, fig.cap = "Figure 5. Mean and 95% CI for SI within Spp and Period, weighted by SSprob"}
+```{r SI_check, fig.width = 10, fig.height = 24, fig.cap = "Figure 5. Mean and 95% CI for SI within Spp and Period, weighted by SSprob"}
 
-# weighted_ci <- function(x, weights, conf.level = 0.95) { ## main idea from Hack-R on Stack Overflow
-#     nx <- length(x)
-#     df <- nx - 1
-#     vx <- wtd.var(x, weights, normwt = F)
-#     mx <- weighted.mean(x, weights)
-#     stderr <- sqrt(vx/nx)
-#     tstat <- mx/stderr
-#     alpha <- 1 - conf.level
-#     cint <- qt(1 - alpha/2, df)
-#     cint <- tstat + c(-cint, cint)
-#     cint * stderr
-# }
+weighted_ci <- function(x, weights, conf.level = 0.95) { ## main idea from Hack-R on Stack Overflow
+    nx <- length(x)
+    df <- nx - 1
+    vx <- wtd.var(x, weights, normwt = F)
+    mx <- weighted.mean(x, weights)
+    stderr <- sqrt(vx/nx)
+    tstat <- mx/stderr
+    alpha <- 1 - conf.level
+    cint <- qt(1 - alpha/2, df)
+    cint <- tstat + c(-cint, cint)
+    cint * stderr
+}
 
-gr <- foreach(unit = unique(SSPredFull$BGC_analysis),.combine = c) %do% {
+gr <- foreach(unit = unique(SSPredFull$BGC_analysis),.combine = rbind) %do% {
   sub <- SSPredFull[BGC_analysis == unit,]
-  sub <- SIBEC[sub, on = "SS_NoSpace"]
-  sub[,SI := mean(MeanPlotSiteIndex), by = .(FuturePeriod, TreeSpp)]
-  sub[,CI_min := CI(MeanPlotSiteIndex)[3], by = .(FuturePeriod, TreeSpp)]
-  sub[,CI_max := CI(MeanPlotSiteIndex)[1], by = .(FuturePeriod, TreeSpp)]
+  tNum <- nrow(sub)
+  ind <- rep(1:nrow(sub),length(Trees))
+  sub <- sub[ind,]
+  sub$TreeSpp <- rep(Trees, each = tNum)
+  sub <- merge(sub,SIBEC,by = c("SS_NoSpace","TreeSpp"), all.x = T)
+  sub[is.na(MeanPlotSiteIndex), MeanPlotSiteIndex := 0]
+  sub[,SI := weighted.mean(MeanPlotSiteIndex,SSprob), by = .(FuturePeriod, TreeSpp)]
+  sub[,CI_min := weighted_ci(MeanPlotSiteIndex,SSprob)[1], by = .(FuturePeriod, TreeSpp)]
+  sub[,CI_max := weighted_ci(MeanPlotSiteIndex,SSprob)[2], by = .(FuturePeriod, TreeSpp)]
   sub <- sub[!is.na(TreeSpp) & !is.nan(CI_min),]
   # sub[,SI := weighted.mean(MeanPlotSiteIndex,SSprob), by = .(FuturePeriod, TreeSpp)]
   # sub[,CI_min := weighted_ci(MeanPlotSiteIndex,SSprob)[1], by = .(FuturePeriod, TreeSpp)]
   # sub[,CI_max := weighted_ci(MeanPlotSiteIndex,SSprob)[2], by = .(FuturePeriod, TreeSpp)]
-  
-  p1 <- ggplot(sub, aes(x = TreeSpp, y = SI, fill = FuturePeriod))+
+  sub
+}
+
+ggplot(gr, aes(x = TreeSpp, y = SI, fill = FuturePeriod))+
     geom_bar(stat = "identity", position = "dodge")+
     geom_errorbar(aes(ymin = CI_min, ymax = CI_max), width = 0.2, position = position_dodge(width = 0.9))+
     theme_few()+
+    theme(axis.line=element_line())+
     geom_hline(yintercept = c(10,20, 30), colour = "black")+
-    ggtitle(unit)
-  list(p1)
+    facet_wrap(.~BGC_analysis, ncol = 1, scales = "free_x")
+```
+
+### Estimated feasibility for each portfolio species and analysis units in each future period
+
+```{r suit_check, fig.width = 10, fig.height = 24, fig.cap = "Figure 5. Mean and 95% CI for suitability within Spp and Period, weighted by SSprob"}
+
+gr <- foreach(unit = unique(SSPredFull$BGC_analysis),.combine = rbind) %do% {
+  sub <- SSPredFull[BGC_analysis == unit,]
+  tNum <- nrow(sub)
+  ind <- rep(1:nrow(sub),length(Trees))
+  sub <- sub[ind,]
+  sub$Spp <- rep(Trees, each = tNum)
+  sub <- merge(sub,SuitTable,by = c("SS_NoSpace","Spp"), all.x = T)
+  sub[is.na(Suitability), Suitability := 5]
+  sub[,Avg := weighted.mean(Suitability,SSprob), by = .(FuturePeriod, Spp)]
+  sub <- sub[!is.na(Spp),]
+  sub
 }
 
-grid.arrange(grobs = gr, ncol = 2)
+ggplot(gr, aes(x = Spp, y = Avg, fill = FuturePeriod))+
+    geom_bar(stat = "identity", position = "dodge")+
+    theme_few()+
+    theme(axis.line=element_line())+
+    geom_hline(yintercept = c(1,2, 3), colour = "black")+
+    facet_wrap(.~BGC_analysis, ncol = 1, scales = "free_x")
 ```
 
 ### Model Parameters
