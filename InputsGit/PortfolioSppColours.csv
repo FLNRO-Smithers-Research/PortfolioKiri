@@ -16,7 +16,7 @@ Fdc,PSEUMEN2,x,coast Douglas-fir,#FFD601
 Fdi,PSEUMEN1,x,Rocky Mountain Douglas-fir,#FFD601
 Gp,CORNNUT,x,western flowering dogwood,#FFFFFF
 Hm,TSUGMER,x,mountain hemlock,#9933FF
-Hw,TSUGHET,x,western hemlock,#A9FF85
+Hw,TSUGHET,x,western hemlock,#40E63E
 Jr,JUNISCO,x,Rocky Mountain juniper,
 La,LARILYA,x,subalpine larch,
 Lt,LARILAR,x,tamarack,
@@ -26,10 +26,10 @@ Mv,ACERCIR,x,vine maple,
 Pa,PINUALB,x,whitebark pine,#520C54
 Pf,PINUFLE,x,limber pine,
 Pj,PINUBAN,x,jack pine,
-Pl,PINUCON,x,lodgepole pine,#005FCB
-Plc,PINUCON1,x,shore pine,#005FCB
-Pli,PINUCON2,x,lodgepole pine,#005FCB
-Pw,PINUMON,x,western white pine,#32a852
+Pl,PINUCON,x,lodgepole pine,#E63E94
+Plc,PINUCON1,x,shore pine,#E63E94
+Pli,PINUCON2,x,lodgepole pine,#E63E94
+Pw,PINUMON,x,western white pine,#A9FF85
 Py,PINUPON,x,ponderosa pine,#F3861A
 Qg,QUERGAR,x,Garry oak,#FFFF66
 Ra,ARBUMEN,x,arbutus,#909090
