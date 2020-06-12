@@ -20,7 +20,7 @@ Hw,TSUGHET,x,western hemlock,#40E63E
 Jr,JUNISCO,x,Rocky Mountain juniper,
 La,LARILYA,x,subalpine larch,
 Lt,LARILAR,x,tamarack,
-Lw,LARIOCC,x,western larch,#DA523E
+Lw,LARIOCC,x,western larch,#E63E40
 Mb,ACERMAC,x,bigleaf maple,#0C4954
 Mv,ACERCIR,x,vine maple,
 Pa,PINUALB,x,whitebark pine,#520C54
@@ -29,7 +29,7 @@ Pj,PINUBAN,x,jack pine,
 Pl,PINUCON,x,lodgepole pine,#E63E94
 Plc,PINUCON1,x,shore pine,#E63E94
 Pli,PINUCON2,x,lodgepole pine,#E63E94
-Pw,PINUMON,x,western white pine,#A9FF85
+Pw,PINUMON,x,western white pine,#387A72
 Py,PINUPON,x,ponderosa pine,#F3861A
 Qg,QUERGAR,x,Garry oak,#FFFF66
 Ra,ARBUMEN,x,arbutus,#909090
