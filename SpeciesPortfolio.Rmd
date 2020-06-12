@@ -677,6 +677,14 @@ ggplot(gr, aes(x = TreeSpp, y = SI, fill = FuturePeriod))+
 
 ```{r suit_check, fig.width = 10, fig.height = 24, fig.cap = "Figure 5. Mean and 95% CI for suitability within Spp and Period, weighted by SSprob"}
 
+
+SSPredFull <- edatopicSubset(SSPredOrig, analUnits, eda)
+curr <- SSPredFull[FuturePeriod == 2025,]
+setkey(curr, BGC_analysis, SSCurrent)
+curr <- unique(curr, by = c("BGC_analysis","SSCurrent"))
+curr[,`:=`(SSprob = 1, FuturePeriod = 2000)]
+SSPredFull <- rbind(SSPredFull, curr)
+
 gr <- foreach(unit = unique(SSPredFull$BGC_analysis),.combine = rbind) %do% {
   sub <- SSPredFull[BGC_analysis == unit,]
   tNum <- nrow(sub)
@@ -685,16 +693,22 @@ gr <- foreach(unit = unique(SSPredFull$BGC_analysis),.combine = rbind) %do% {
   sub$Spp <- rep(Trees, each = tNum)
   sub <- merge(sub,SuitTable,by = c("SS_NoSpace","Spp"), all.x = T)
   sub[is.na(Suitability), Suitability := 5]
+  sub[,Suitability := 5 - Suitability]
   sub[,Avg := weighted.mean(Suitability,SSprob), by = .(FuturePeriod, Spp)]
+  sub[,CI_min := weighted_ci(Suitability,SSprob)[1], by = .(FuturePeriod, Spp)]
+  sub[,CI_max := weighted_ci(Suitability,SSprob)[2], by = .(FuturePeriod, Spp)]
+  sub <- sub[!is.na(Spp),]
+  sub[is.nan(CI_min),`:=`(CI_min = Avg,CI_max = Avg)]
   sub <- sub[!is.na(Spp),]
   sub
 }
 
 ggplot(gr, aes(x = Spp, y = Avg, fill = FuturePeriod))+
     geom_bar(stat = "identity", position = "dodge")+
+    geom_errorbar(aes(ymin = CI_min, ymax = CI_max), width = 0.2, position = position_dodge(width = 0.9))+
     theme_few()+
     theme(axis.line=element_line())+
-    geom_hline(yintercept = c(1,2, 3), colour = "black")+
+    geom_hline(yintercept = c(2,3,4), colour = "black")+
     facet_wrap(.~BGC_analysis, ncol = 1, scales = "free_x")
 ```
 
