@@ -3,12 +3,14 @@ title: "Climate Change Optimized Species Portfolio for Reforestation Planning:Su
 author: "Will MacKenzie and Kiri Daust"
 date: "17/05/2020"
 output:
-  #bookdown::html_document2:
-    html_document:
+  html_document:
     fig_caption: yes
     theme: lumen
     toc: yes
-  
+  pdf_document: default
+  #bookdown::html_document2:
+  word_document: default
+    
 ---
 
 This report presents a range of risk-return optimized portfolios of tree species generated using Markowitz Modern Portfolio Theory (MPT). The analysis uses forecast site series level changes to species feasibility from the Climate Change-Informed Species Selection (CCISS) tool, and site index by site series growth information (SIBEC) to calculate the optimal mix of tree species given the modelled uncertainty in future climates up to 2070.
@@ -142,7 +144,7 @@ names(myPal) <- cols$TreeCode
 
 
 library(unikn)
-#seecol(myPal, hex = T, rgb = F)
+seecol(myPal, hex = T, rgb = F)
 ```
 
 
