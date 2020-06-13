@@ -77,6 +77,9 @@ SuitNew <- fread("InputsGit/Feas_toAdd.csv")
 colnames(SuitTable)[2:4] <- c("SS_NoSpace","Spp","Suitability")
 SuitTable <- SuitTable[,c("BGC","SS_NoSpace","Spp","Suitability")]
 SuitTable <- rbind(SuitTable, SuitNew)
+remove <- c("Mb", "Ra", "Ep", "Bp", "Act", "Bc", "Oa", "Oc", "Og", "Ol", "On", "Ot", "Oy", "Pc", "Ps", "Pz", "Qb", "Qc", "Qd", "Qg", "Qx", "Qz", "Yp") 
+## temporary remove since no SI information available yet
+SuitTable <- SuitTable %>% filter(!Spp %in% remove)
 
 SIBEC <- fread("InputsGit/PredSI_May2020.csv") 
 SIBECnew <- fread("InputsGit/SI_to_add.csv")
