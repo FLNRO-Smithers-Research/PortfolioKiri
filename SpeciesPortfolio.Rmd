@@ -86,7 +86,7 @@ SIBEC <- rbind(SIBEC, SIBECnew)
 SIBEC <- SIBEC[,c("SS_NoSpace","Spp","SIPred")] %>% set_colnames(c("SS_NoSpace","TreeSpp","MeanPlotSiteIndex"))
 
 eda <- fread("InputsGit/Edatopic_v11_20.csv")
-eda <- eda[,.(BGC,SS_NoSpace, Edatopic)]
+eda <- unique(eda[is.na(Special),.(BGC,SS_NoSpace, Edatopic)])
 
 if(file.exists(paste0(cloud_dir,"CCISSPred.Rdata"))){
   load(paste0(cloud_dir,"CCISSPred.Rdata"))
@@ -271,6 +271,7 @@ loopCombine <- function(a,b){
 ef_plot <- function(outAll){
   efAll <- outAll$GraphDat
   intDat <- outAll$MaxS
+  efAll$variable <- factor(efAll$variable, levels = sort(unique(as.character(efAll$variable))))
   ggplot(efAll[efAll$variable != "RealRet",],aes(x = Sd, y = value,group = variable))+
     geom_area(aes(fill = variable), size = 0.00001, col = "grey50", stat = "identity")+
     colScale +
@@ -404,6 +405,10 @@ run_portfolio <- function(SSPredFull,SIBEC,SuitTable,SuitProb,Trees,boundDat,min
                            
                            #cat("Optimising site",SNum,"...\n")
                            SS.sum <- cleanData(SSPredAll,SIBEC,SuitTable,SNum, Trees, timePer = timePeriods)
+                           if(any(!complete.cases(SS.sum))){
+                             stop("There are missing Suitability or SI values in unit ",
+                                  BGC,"sitenumber ",SNum,": Please fix them :)")
+                           }
                            SS.sum$FuturePeriod <- as.numeric(SS.sum$FuturePeriod)
                            if(length(timePeriods) == 1){
                              temp <- SS.sum
@@ -488,7 +493,6 @@ run_portfolio <- function(SSPredFull,SIBEC,SuitTable,SuitProb,Trees,boundDat,min
         maxSharpe$SetRet[maxSharpe$Spp == "Sd"] <- ret90
         efAll <- efAll[,-c("Return","Sharpe")]
         efAll <- melt(efAll, id.vars = "Sd")
-        efAll$variable <- factor(efAll$variable, levels = sort(unique(as.character(efAll$variable))))
         efAll$Unit <- BGC
       
         list(GraphDat = efAll, MaxS = maxSharpe)
