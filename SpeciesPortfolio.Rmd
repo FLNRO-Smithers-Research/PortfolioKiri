@@ -408,9 +408,11 @@ run_portfolio <- function(SSPredFull,SIBEC,SuitTable,SuitProb,Trees,boundDat,min
                            
                            #cat("Optimising site",SNum,"...\n")
                            SS.sum <- cleanData(SSPredAll,SIBEC,SuitTable,SNum, Trees, timePer = timePeriods)
-                           if(any(!complete.cases(SS.sum))){
-                             stop("There are missing Suitability or SI values in unit ",
-                                  BGC,"sitenumber ",SNum,": Please fix them :)")
+                           if(any(is.na(SS.sum$MeanSuit))){
+                             warning("Missing Suitability in unit ",
+                                  BGC,", sitenumber ",SNum," for ",
+                                  SS.sum$Spp[is.na(SS.sum$MeanSuit)], ": They will be filled with suit = 4")
+                             SS.sum$MeanSuit[is.na(SS.sum$MeanSuit)] <- 4
                            }
                            SS.sum$FuturePeriod <- as.numeric(SS.sum$FuturePeriod)
                            if(length(timePeriods) == 1){
