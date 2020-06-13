@@ -586,10 +586,12 @@ outAlldry <- run_portfolio(SSPredFull,SIBEC,SuitTable, SuitProb,Trees,boundDat,m
 outAlldryCurr <- run_portfolio(SSPredFull,SIBEC,SuitTable, SuitProb,Trees,boundDat,minAccept, 
                                timePeriods = 2000,returnValue)
 ```
+
 #### Portfolio Graphs
 ```{r plot_dry, fig.height = 13, fig.width = 12}
 ef_plot(outAlldry)
 ```
+
 #### Comparison of max sharpe ratio portfolios and 90% return portfolios for current and future climate
 ```{r plotcompare_dry, fig.height = 13, fig.width = 12}
 
@@ -610,6 +612,7 @@ tabB2 <- flextable(as.data.frame(MSWeights), col_keys = cols)
 tabB2 <- colformat_num(tabB2,j = cols[-1],digits = 2)
 tabB2
 ```
+
 ### Wet sites (C6)
 
 ```{r portfolio_wet}
@@ -620,7 +623,9 @@ outAllwet <- run_portfolio(SSPredFull,SIBEC,SuitTable, SuitProb,Trees,boundDat,m
 outAllwetCurr <- run_portfolio(SSPredFull,SIBEC,SuitTable, SuitProb,Trees,boundDat,minAccept, 
                                timePeriods = 2000,returnValue)
 ```
+
 #### Portfolio Graphs
+
 ```{r plot_wet, fig.height = 13, fig.width = 12}
 ef_plot(outAllwet)
 ```
