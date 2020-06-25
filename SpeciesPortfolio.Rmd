@@ -147,7 +147,7 @@ names(myPal) <- cols$TreeCode
 
 
 library(unikn)
-seecol(myPal, hex = T, rgb = F)
+#seecol(myPal, hex = T, rgb = F)
 ```
 
 
@@ -520,9 +520,7 @@ SSPredFull <- edatopicSubset(SSPredOrig,analUnits,eda,pos = "Zonal")
 outAll <- run_portfolio(SSPredFull,SIBEC,SuitTable, SuitProb,Trees,boundDat,minAccept, timePeriods,returnValue)
 ```
 
-# Zonal Sites
-
-### Climate change species portfolios by analysis unit.
+## Climate change species portfolios by analysis unit.
 Portfolio plots for neutral zonal site series in each analysis unit based on a rotation period to 2070 showing the efficient frontier species ratios across risk/return choices.
 The graphs show the ratio of species for a range of return/risk compromises.
 
@@ -532,6 +530,9 @@ The graphs show the ratio of species for a range of return/risk compromises.
 + The MaxSharpe line shows a portfolio that shows an optimized portfolio that balances risk/return based on levels of volatility, the amount of uncertainty in climate futures. 
 Other "efficient" portfolios can be selected from positions along the volatility gradient based on the practioner tolerance for risk. 
 
+### Zonal Sites
+
+#### Portfolio Graphs
 ```{r plot_pf, fig.height = 13, fig.width = 12, fig.cap = "Figure 2. Portfolio graphs for neutral aspect zonal site seris by analysis unit showing species ratios from the MPT efficient frontier for a rotation period up to 2070."}
 # pdfOutput <- F
 # if(pdfOutput){
@@ -545,10 +546,24 @@ ef_plot(outAll)
 ```
 
 
-### Portfolio of species at the max Sharpe ratio for each analysis unit.
+```{r currPort}
+timePeriodsCurr = 2000
+returnValue = 0.9
+SSPredFull <- edatopicSubset(SSPredOrig,analUnits,eda,pos = "Zonal")
+outAllCurr <- run_portfolio(SSPredFull,SIBEC,SuitTable, SuitProb,Trees,boundDat,minAccept, timePeriodsCurr,returnValue)
+
+```
+
+#### Comparison of max sharpe ratio portfolios and 90% return portfolios for current and future climate
+
+```{r stacked_bar, fig.width = 8.5, fig.height = 9, fig.cap = "Figure 3. Portfolio weighting for current climate (Max Sharpe) and future climate (Max Sharpe and 90% return)"}
+MS_plot(outAllCurr, outAll)
+```
+
+
+#### Portfolio of species at the max Sharpe ratio for each analysis unit.
 + RealRet is the estimated mean site index return relative to the maximum return portfolio.
 + Sd is the volatility of the climate futures with lower numbers meaning higher volatility/uncertainty
-
 
 ```{r table}
 MSWeights <- dcast(outAll$MaxS,Unit ~ Spp)
@@ -561,21 +576,7 @@ tab <- colformat_num(tab,j = cols[-1],digits = 2)
 tab
 ```
 
-```{r currPort}
-timePeriodsCurr = 2000
-returnValue = 0.9
-SSPredFull <- edatopicSubset(SSPredOrig,analUnits,eda,pos = "Zonal")
-outAllCurr <- run_portfolio(SSPredFull,SIBEC,SuitTable, SuitProb,Trees,boundDat,minAccept, timePeriodsCurr,returnValue)
-
-```
-
-### Comparison of max sharpe ratio portfolios and 90% return portfolios for current and future climate
-
-```{r stacked_bar, fig.width = 8.5, fig.height = 9, fig.cap = "Figure 3. Portfolio weighting for current climate (Max Sharpe) and future climate (Max Sharpe and 90% return)"}
-MS_plot(outAllCurr, outAll)
-```
-
-# Dry sites (B2)
+### Poor-Dry sites (B2)
 
 ```{r portfolio_dry}
 timePeriods = c(2000,2025,2055)
@@ -586,12 +587,33 @@ outAlldryCurr <- run_portfolio(SSPredFull,SIBEC,SuitTable, SuitProb,Trees,boundD
                                timePeriods = 2000,returnValue)
 ```
 
+#### Portfolio Graphs
 ```{r plot_dry, fig.height = 13, fig.width = 12}
 ef_plot(outAlldry)
+```
+
+#### Comparison of max sharpe ratio portfolios and 90% return portfolios for current and future climate
+```{r plotcompare_dry, fig.height = 13, fig.width = 12}
+
 MS_plot(outAlldryCurr,outAlldry)
 ```
 
-# Wet sites (C6)
+#### Portfolio of species at the max Sharpe ratio for poor-dry (B2) site series each analysis unit.
++ RealRet is the estimated mean site index return relative to the maximum return portfolio.
++ Sd is the volatility of the climate futures with lower numbers meaning higher volatility/uncertainty
+
+```{r tableB2}
+MSWeights <- dcast(outAlldry$MaxS,Unit ~ Spp)
+MSWeights[MSWeights < 0.01] <- NA ## minimum percent for species to appear in portfolio
+MSWeights <- MSWeights[,c(T,colSums(MSWeights[,-1], na.rm = T) > 0)]
+MSWeights[is.na(MSWeights)] <- 0
+cols <- c(names(MSWeights)[!names(MSWeights) %in% Trees],names(MSWeights)[names(MSWeights) %in% Trees])
+tabB2 <- flextable(as.data.frame(MSWeights), col_keys = cols)
+tabB2 <- colformat_num(tabB2,j = cols[-1],digits = 2)
+tabB2
+```
+
+### Wet sites (C6)
 
 ```{r portfolio_wet}
 timePeriods = c(2000,2025,2055)
@@ -602,14 +624,33 @@ outAllwetCurr <- run_portfolio(SSPredFull,SIBEC,SuitTable, SuitProb,Trees,boundD
                                timePeriods = 2000,returnValue)
 ```
 
+#### Portfolio Graphs
+
 ```{r plot_wet, fig.height = 13, fig.width = 12}
 ef_plot(outAllwet)
+```
+#### Comparison of max sharpe ratio portfolios and 90% return portfolios for current and future climate
+```{r plotcompare_wet, fig.height = 13, fig.width = 12}
 MS_plot(outAllwetCurr,outAllwet)
 ```
 
-### Predicted BGC subzone/variants for each future time period from 30 climate models
 
-Ratio of predicted BGC units for each BGC analysis unit (multiple locations) from CCISS function.
+### Portfolio of species at the max Sharpe ratio for rich-moist (D6) site series each analysis unit.
++ RealRet is the estimated mean site index return relative to the maximum return portfolio.
++ Sd is the volatility of the climate futures with lower numbers meaning higher volatility/uncertainty
+
+```{r tableD6}
+MSWeights <- dcast(outAllwet$MaxS,Unit ~ Spp)
+MSWeights[MSWeights < 0.01] <- NA ## minimum percent for species to appear in portfolio
+MSWeights <- MSWeights[,c(T,colSums(MSWeights[,-1], na.rm = T) > 0)]
+MSWeights[is.na(MSWeights)] <- 0
+cols <- c(names(MSWeights)[!names(MSWeights) %in% Trees],names(MSWeights)[names(MSWeights) %in% Trees])
+tabD6 <- flextable(as.data.frame(MSWeights), col_keys = cols)
+tabD6 <- colformat_num(tabD6,j = cols[-1],digits = 2)
+tabD6
+```
+
+### Predicted BGC subzone/variants for each future time period from 30 climate models
 
 ```{r BGC_plot, fig.width=10, fig.height=6, fig.cap = "Figure 4. Ratio of predicted BGCs in each analysis unit 2040-2070"}
 BGCPred <- as.data.table(CCISSPred[[2]])
@@ -684,47 +725,46 @@ ggplot(gr, aes(x = TreeSpp, y = SI, fill = FuturePeriod))+
     facet_wrap(.~BGC_analysis, ncol = 1, scales = "free_x")
 ```
 
-### Estimated feasibility for each portfolio species and analysis units in each future period
 
-```{r suit_check, fig.width = 10, fig.height = 24, fig.cap = "Figure 5. Mean and 95% CI for suitability within Spp and Period, weighted by SSprob"}
+```{r suit_check, fig.width = 10, fig.height = 24, fig.cap = "Figure 5. Mean  species feasibility by time periodfor zonal sites"}
 
+### Estimated feasibility for each portfolio species and analysis units in each future period for zonal sites
 
-SSPredFull <- edatopicSubset(SSPredOrig, analUnits, eda)
-curr <- SSPredFull[FuturePeriod == 2025,]
-setkey(curr, BGC_analysis, SSCurrent)
-curr <- unique(curr, by = c("BGC_analysis","SSCurrent"))
-curr[,`:=`(SSprob = 1, FuturePeriod = 2000)]
-SSPredFull <- rbind(SSPredFull, curr)
+# SSPredFull <- edatopicSubset(SSPredOrig, analUnits, eda)
+# curr <- SSPredFull[FuturePeriod == 2025,]
+# setkey(curr, BGC_analysis, SSCurrent)
+# curr <- unique(curr, by = c("BGC_analysis","SSCurrent"))
+# curr[,`:=`(SSprob = 1, FuturePeriod = 2000)]
+# SSPredFull <- rbind(SSPredFull, curr)
 
-gr <- foreach(unit = unique(SSPredFull$BGC_analysis),.combine = rbind) %do% {
-  sub <- SSPredFull[BGC_analysis == unit,]
-  tNum <- nrow(sub)
-  ind <- rep(1:nrow(sub),length(Trees))
-  sub <- sub[ind,]
-  sub$Spp <- rep(Trees, each = tNum)
-  sub <- merge(sub,SuitTable,by = c("SS_NoSpace","Spp"), all.x = T)
-  sub[is.na(Suitability), Suitability := 5]
-  sub[,Suitability := 5 - Suitability]
-  sub[,Avg := weighted.mean(Suitability,SSprob), by = .(FuturePeriod, Spp)]
-  sub[,CI_min := weighted_ci(Suitability,SSprob)[1], by = .(FuturePeriod, Spp)]
-  sub[,CI_max := weighted_ci(Suitability,SSprob)[2], by = .(FuturePeriod, Spp)]
-  sub <- sub[!is.na(Spp),]
-  sub[is.nan(CI_min),`:=`(CI_min = Avg,CI_max = Avg)]
-  sub <- sub[!is.na(Spp),]
-  sub
-}
-
-ggplot(gr, aes(x = Spp, y = Avg, fill = FuturePeriod))+
-    geom_bar(stat = "identity", position = "dodge")+
-    geom_errorbar(aes(ymin = CI_min, ymax = CI_max), width = 0.2, position = position_dodge(width = 0.9))+
-    theme_few()+
-    theme(axis.line=element_line())+
-    geom_hline(yintercept = c(2,3,4), colour = "black")+
-    facet_wrap(.~BGC_analysis, ncol = 1, scales = "free_x")
+# gr <- foreach(unit = unique(SSPredFull$BGC_analysis),.combine = rbind) %do% {
+#   sub <- SSPredFull[BGC_analysis == unit,]
+#   tNum <- nrow(sub)
+#   ind <- rep(1:nrow(sub),length(Trees))
+#   sub <- sub[ind,]
+#   sub$Spp <- rep(Trees, each = tNum)
+#   sub <- merge(sub,SuitTable,by = c("SS_NoSpace","Spp"), all.x = T)
+#   sub[is.na(Suitability), Suitability := 5]
+#   sub[,Suitability := 5 - Suitability]
+#   sub[,Avg := weighted.mean(Suitability,SSprob), by = .(FuturePeriod, Spp)]
+#   sub[,CI_min := weighted_ci(Suitability,SSprob)[1], by = .(FuturePeriod, Spp)]
+#   sub[,CI_max := weighted_ci(Suitability,SSprob)[2], by = .(FuturePeriod, Spp)]
+#   sub <- sub[!is.na(Spp),]
+#   sub[is.nan(CI_min),`:=`(CI_min = Avg,CI_max = Avg)]
+#   sub <- sub[!is.na(Spp),]
+#   sub
+# }
+# 
+# ggplot(gr, aes(x = Spp, y = Avg, fill = FuturePeriod))+
+#     geom_bar(stat = "identity", position = "dodge")+
+#     geom_errorbar(aes(ymin = CI_min, ymax = CI_max), width = 0.2, position = position_dodge(width = 0.9))+
+#     theme_few()+
+#     theme(axis.line=element_line())+
+#     geom_hline(yintercept = c(2,3,4), colour = "black")+
+#     facet_wrap(.~BGC_analysis, ncol = 1, scales = "free_x")
 ```
 
 ### Model Parameters
-
 
 
 + The climate change portfolio was run using predictions up to `r max(timePeriods)+15`.
