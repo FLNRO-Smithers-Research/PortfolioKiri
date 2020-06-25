@@ -100,6 +100,8 @@ CCISS_Spp <- function(Y1,BGCmodel,E1){
   BGCfutureE <- edatopic2[edatopic2$BGC %in% Y3.sub1$BGC.pred  ,] #extracts edatopic info only for predicted BGCs
   Y3.sub1$SiteNo <- as.character(Y3.sub1$SiteNo)
   SiteNo.list = unique(Y3.sub1$SiteNo)
+  Y3.sub1$BGC <- as.character(Y3.sub1$BGC)
+  Y3.sub1$BGC.pred <- as.character(Y3.sub1$BGC.pred)
   
   gc()
   
@@ -117,8 +119,7 @@ CCISS_Spp <- function(Y1,BGCmodel,E1){
       
       Y3.each <- Y3.sub1[Y3.sub1$SiteNo %in% SNL ,] ## extracts data for each site
       Y3.each <- Y3.each[Y3.each$FuturePeriod %in% i,] ##extracts data for each time period
-      Y3.siteno <- as.list(unique (Y3.each$SiteNo))
-      Y3.BGC <- as.list(unique(Y3.each$BGC))
+      Y3.BGC <- unique(Y3.each$BGC)
       Y3.BGC.pred<- unique(Y3.each$BGC.pred)
       BGCfocalE <- edatopic1[edatopic1$BGC %in% Y3.BGC  , ] ### extracts edatopic space for BGC focal of SiteNo
       BGCfutureE <- edatopic2[edatopic2$BGC %in% Y3.BGC.pred  , ] #extracts edatopic info only for predicted BGCs
