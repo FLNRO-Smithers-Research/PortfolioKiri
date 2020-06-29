@@ -3,11 +3,11 @@ title: "Climate Change Optimized Species Portfolio for Reforestation Planning:Su
 author: "Will MacKenzie and Kiri Daust"
 date: "17/05/2020"
 output:
+  pdf_document: default
   html_document:
     fig_caption: yes
     theme: lumen
     toc: yes
-  pdf_document: default
   #bookdown::html_document2:
   word_document: default
     
@@ -123,14 +123,14 @@ locations2 <- st_as_sf(locations2, coords = c("longitude","latitude"), crs = 432
 
 ```
 
-```{r location map}
+```{r location map, fig.height = 13, fig.width = 12, fig.cap = "Figure 1. Sample locations in BGC analysis units for portfolio development in the Sunshine Coast District"}
 #tmaptools::palette_explorer() ###tool for choosing colours
 
-tmap_mode("view")
-tmap_options(basemaps = "OpenTopoMap")
+tmap_mode("plot")
+#tmap_options(basemaps = "OpenTopoMap")
 tBGC <- tm_shape (BGCmap) + tm_polygons("BGC", alpha = .9)+
-    tm_shape(locations2) + tm_symbols(size = 0.1, shapes = 21:25, col = "BGC_analysis")+
-  tm_layout(legend.outside = TRUE, legend.outside.position = "right", legend.stack = "vertical", title = "Sample locations for portfolio development in the Sunshine Coast District", main.title.size = 1)
+    tm_shape(locations2) + tm_symbols(size = 0.3, shape = 24, col = "BGC_analysis")+
+  tm_layout(legend.outside = TRUE, legend.outside.position = "right", legend.stack = "vertical")
   
 tBGC
 
@@ -513,6 +513,9 @@ run_portfolio <- function(SSPredFull,SIBEC,SuitTable,SuitProb,Trees,boundDat,min
 
 ```
 
+## Climate change species portfolios by analysis unit.
+Portfolio plots for neutral zonal site series in each analysis unit based on a rotation period to 2070 showing the efficient frontier species ratios across risk/return choices.
+
 ```{r zonal_port}
 timePeriods = c(2000,2025,2055)
 returnValue = 0.9
@@ -520,8 +523,6 @@ SSPredFull <- edatopicSubset(SSPredOrig,analUnits,eda,pos = "Zonal")
 outAll <- run_portfolio(SSPredFull,SIBEC,SuitTable, SuitProb,Trees,boundDat,minAccept, timePeriods,returnValue)
 ```
 
-## Climate change species portfolios by analysis unit.
-Portfolio plots for neutral zonal site series in each analysis unit based on a rotation period to 2070 showing the efficient frontier species ratios across risk/return choices.
 The graphs show the ratio of species for a range of return/risk compromises.
 
 + The left side of the graphs is the portfolio with maximum return but not accounting for any risk.
@@ -546,7 +547,7 @@ ef_plot(outAll)
 ```
 
 
-```{r currPort}
+```{r Portfolio for zonal no climate change}
 timePeriodsCurr = 2000
 returnValue = 0.9
 SSPredFull <- edatopicSubset(SSPredOrig,analUnits,eda,pos = "Zonal")
@@ -565,18 +566,19 @@ MS_plot(outAllCurr, outAll)
 + RealRet is the estimated mean site index return relative to the maximum return portfolio.
 + Sd is the volatility of the climate futures with lower numbers meaning higher volatility/uncertainty
 
-```{r table}
+```{r table, fig.width=10, fig.height=6, fig.cap = "Table 1. Species weighting of the Sharpe's Ratio portfolio for zonal sites in each BGC analysis unit 2020-2070"}
 MSWeights <- dcast(outAll$MaxS,Unit ~ Spp)
 MSWeights[MSWeights < 0.01] <- NA ## minimum percent for species to appear in portfolio
 MSWeights <- MSWeights[,c(T,colSums(MSWeights[,-1], na.rm = T) > 0)]
 MSWeights[is.na(MSWeights)] <- 0
+MSWeights <- MSWeights %>% dplyr::select(-Sd) %>% dplyr::rename(percentofMaxSI = RealRet)
 cols <- c(names(MSWeights)[!names(MSWeights) %in% Trees],names(MSWeights)[names(MSWeights) %in% Trees])
 tab <- flextable(as.data.frame(MSWeights), col_keys = cols)
 tab <- colformat_num(tab,j = cols[-1],digits = 2)
 tab
 ```
 
-### Poor-Dry sites (B2)
+### Poor-Subxeric sites (B2)
 
 ```{r portfolio_dry}
 timePeriods = c(2000,2025,2055)
@@ -602,18 +604,19 @@ MS_plot(outAlldryCurr,outAlldry)
 + RealRet is the estimated mean site index return relative to the maximum return portfolio.
 + Sd is the volatility of the climate futures with lower numbers meaning higher volatility/uncertainty
 
-```{r tableB2}
+```{r tableB2, fig.width=10, fig.height=6, fig.cap = "Table 1. Species weighting of the Sharpe's Ratio portfolio for poor-subxeric sites in each BGC analysis unit 2020-2070"}
 MSWeights <- dcast(outAlldry$MaxS,Unit ~ Spp)
 MSWeights[MSWeights < 0.01] <- NA ## minimum percent for species to appear in portfolio
 MSWeights <- MSWeights[,c(T,colSums(MSWeights[,-1], na.rm = T) > 0)]
 MSWeights[is.na(MSWeights)] <- 0
+MSWeights <- MSWeights %>% dplyr::select(-Sd) %>% dplyr::rename(percentofMaxSI = RealRet)
 cols <- c(names(MSWeights)[!names(MSWeights) %in% Trees],names(MSWeights)[names(MSWeights) %in% Trees])
 tabB2 <- flextable(as.data.frame(MSWeights), col_keys = cols)
 tabB2 <- colformat_num(tabB2,j = cols[-1],digits = 2)
 tabB2
 ```
 
-### Wet sites (C6)
+### Rich-Hygric sites (D6)
 
 ```{r portfolio_wet}
 timePeriods = c(2000,2025,2055)
@@ -639,11 +642,12 @@ MS_plot(outAllwetCurr,outAllwet)
 + RealRet is the estimated mean site index return relative to the maximum return portfolio.
 + Sd is the volatility of the climate futures with lower numbers meaning higher volatility/uncertainty
 
-```{r tableD6}
+```{r tableD6, fig.width=10, fig.height=6, fig.cap = "Table 1. Species weighting of the Sharpe's Ratio portfolio for rich-hygric sites in each BGC analysis unit 2020-2070"}
 MSWeights <- dcast(outAllwet$MaxS,Unit ~ Spp)
 MSWeights[MSWeights < 0.01] <- NA ## minimum percent for species to appear in portfolio
 MSWeights <- MSWeights[,c(T,colSums(MSWeights[,-1], na.rm = T) > 0)]
 MSWeights[is.na(MSWeights)] <- 0
+MSWeights <- MSWeights %>% dplyr::select(-Sd) %>% dplyr::rename(percentofMaxSI = RealRet)
 cols <- c(names(MSWeights)[!names(MSWeights) %in% Trees],names(MSWeights)[names(MSWeights) %in% Trees])
 tabD6 <- flextable(as.data.frame(MSWeights), col_keys = cols)
 tabD6 <- colformat_num(tabD6,j = cols[-1],digits = 2)
@@ -718,7 +722,7 @@ gr <- foreach(unit = unique(SSPredFull$BGC_analysis),.combine = rbind) %do% {
 
 ggplot(gr, aes(x = TreeSpp, y = SI, fill = FuturePeriod))+
     geom_bar(stat = "identity", position = "dodge")+
-    geom_errorbar(aes(ymin = CI_min, ymax = CI_max), width = 0.2, position = position_dodge(width = 0.9))+
+    #geom_errorbar(aes(ymin = CI_min, ymax = CI_max), width = 0.2, position = position_dodge(width = 0.9))+
     theme_few()+
     theme(axis.line=element_line())+
     geom_hline(yintercept = c(10,20, 30), colour = "black",linetype = "dashed", size = .5 )+
