@@ -60,11 +60,11 @@ if(dir.exists("C:/users/whmacken/Sync")){
 }
 
 pem_name <- "PEM_QU_SBSdw2_1_Polygons2"
-pem <- st_read(dsn = paste0(cloud_dir,"PortfolioFiles/QuesnelPem"), layer = pem_name)
-pemBGC <- unique(paste0(pem$Bgc_Zone,pem$Bgc_Subzon,pem$Bgc_Vrt))
-pem <- pem[pem$Site_S1 != 0, c("AREA","PEM_QU_ID","Sdec_1","Site_S1","Sdec_2","Site_S2","Sdec_3","Site_S3")]
+pemOrig <- st_read(dsn = paste0(cloud_dir,"PortfolioFiles/QuesnelPem"), layer = pem_name)
+pemBGC <- unique(paste0(pemOrig$Bgc_Zone,pemOrig$Bgc_Subzon,pemOrig$Bgc_Vrt))
+pem <- pemOrig[pemOrig$Site_S1 != 0, c("AREA","PEM_QU_ID","Sdec_1","Site_S1","Sdec_2","Site_S2","Sdec_3","Site_S3")]
 pem <- data.table(pem)
-pem <- pem[,.(geometry = st_union(geometry)), by = .(Sdec_1,Site_S1,Sdec_2,Site_S2,Sdec_3,Site_S3)]
+pem <- pem[,.(geometry = st_union(geometry), AREA = sum(AREA)), by = .(Sdec_1,Site_S1,Sdec_2,Site_S2,Sdec_3,Site_S3)]
 pem[,PolyID := seq_along(Sdec_1)]
 pem <- st_as_sf(pem)
 # pts <- st_sample(pem, size = rep(20, nrow(pem)), type = "random") %>% st_as_sf()
@@ -247,6 +247,12 @@ SS_Subset <- function(SSPredOrig, pos = "01"){
   SSPredFull[,SiteNo := as.numeric(SiteNo)]
 }
 
+loopCombine2 <- function(a,b){
+  G <- rbind(a$pemSum,b$pemSum)
+  df <- rbind(a$allDat,b$allDat)
+  return(list(pemSum = G, allDat = df))
+}
+
 loopCombine <- function(a,b){
   G <- rbind(a$GraphDat,b$GraphDat)
   df <- rbind(a$MaxS,b$MaxS)
@@ -360,15 +366,17 @@ registerDoParallel(cl)
 
 pemData <- pemData[!is.na(Site),]
 pemData[,Site := ifelse(nchar(Site) < 2, paste0("0",Site),Site)]
+pemData <- pemData[Site != "00",]
 
 timePeriods = c(2000,2025,2055)
 returnValue = 0.9
 treeList <- Trees
 nSpp <- length(Trees)
 
-pemPort <- foreach(poly = unique(pemData$PolyID), .combine = rbind) %do% {
+pemPort <- foreach(poly = unique(pemData$PolyID), .combine = loopCombine2) %do% {
   pemCurr <- pemData[PolyID == poly,]
   ss_units <- rep(pemCurr$Site, pemCurr$Sdec)
+  cat("Processing polygon",poly,"...\n")
   outAll <- foreach(
   SS = ss_units,
   .combine = loopCombine,
@@ -392,9 +400,6 @@ pemPort <- foreach(poly = unique(pemData$PolyID), .combine = rbind) %do% {
   SSList <- unique(SSPredBGC$SSCurrent)
   SSout <-
     foreach(selectBGC = SSList[1], .combine = loopCombine) %do% {
-      cat("########## Processing",
-          selectBGC,
-          "###################\n")
       SSPredAll <- SSPredBGC[SSPredBGC$SSCurrent == selectBGC, ] ##don't need this line?
       
       SiteList <- unique(SSPredAll$SiteNo)
@@ -561,19 +566,44 @@ pemPort <- foreach(poly = unique(pemData$PolyID), .combine = rbind) %do% {
 dat <- data.table(outAll$MaxS)
 dat <- dat[!Spp %chin% c("RealRet","Sd"), .(Weight = mean(value)), by = .(Spp)]
 setorder(dat, -Weight)
+datAll <- dat
 dat <- dat[1:5,]
-temp <- data.frame(V1 = c(dat$Spp,dat$Weight))
-rownames(temp) <- c("Spp1","Spp2","Spp3","Spp4","Spp5","Wt1","Wt2","Wt3","Wt4","Wt5")
-temp <- as.data.frame(t(temp))
-temp$PolyID <- poly
-temp
+dat[,Weight := Weight/sum(Weight)]
+dat[,Weight := round(Weight*10,digits = 0)]
+dat <- dat[Weight != 0,]
+dat[,Lab := paste0(Spp,Weight)]
+sppLab <- paste(dat$Lab, collapse = "_")
+pemCurr$Lab <- paste0(pemCurr$Site,"[",pemCurr$Sdec,"]")
+pemLab <- paste0(pemBGC,"/",paste(pemCurr$Lab, collapse = ""))
+pSum <- data.frame(Polygon = pemLab,Spp = sppLab)
+datAll$PolyLab = pemLab
+datAll$PolyID = poly
+list(pemSum = pSum, allDat = datAll)
 }
 
 
 ```
 
 ```{r add to pem}
-pemOut <- st_sf(data.frame(pemPort,pem))
+pemOut <- st_sf(data.frame(pemPort$pemSum,pem))
 st_write(pemOut, dsn = paste0(cloud_dir,"PortfolioFiles/QuesnelPem"), 
-         layer = "WithPortfolio", driver = "ESRI Shapefile")
+         layer = "WithPortfolio", driver = "ESRI Shapefile", overwrite = T, append = F)
+```
+
+```{r sumTable}
+dat <- data.table(pemPort$allDat)
+dat <- data.table::dcast(dat, PolyLab ~ Spp, value.var = "Weight")
+dat[is.na(dat)] <- 0
+pemArea <- pemOut[,c("Polygon","AREA")] %>% st_drop_geometry() %>% as.data.table()
+avg <- colMeans(dat[,-1])
+dat <- pemArea[dat, on = c(Polygon = "PolyLab")]
+ft1 <- flextable(dat) %>% colformat_num(digits = 2) %>% set_caption("Portfolio results for each polygon")
+ft1
+
+dat2 <- data.table(Spp = names(avg),Weight = avg)
+dat2 <- dat2[Weight >= 0.05, .(Spp = Spp,Weight = Weight/sum(Weight))]
+dat2[,Area := Weight*sum(dat$AREA)]
+dat2[,NumTrees := Area/2.2]
+ft2 <- flextable(dat2) %>% colformat_num(digits = 2) %>% set_caption("Average weighting over whole study area")
+ft2
 ```
