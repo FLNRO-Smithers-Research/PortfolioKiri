@@ -597,16 +597,11 @@ if(nrow(dat) > 0){
 ```
 
 ```{r add to pem}
-<<<<<<< HEAD
 temp <- as.data.table(pemPort$pemSum)
 pemOut <- temp[pem, on = "PolyID"]
 st_write(pemOut, dsn = paste0(cloud_dir,"PortfolioFiles/QuesnelPresentation"), 
          layer = "PemPortfolio", driver = "ESRI Shapefile", overwrite = T, append = F)
-=======
-pemOut <- st_sf(data.frame(pemPort$pemSum,pem))
-st_write(pemOut, dsn = paste0(cloud_dir,"PortfolioFiles/QuesnelPem_Portfolios"), 
-         layer = "WithPortfolio", driver = "ESRI Shapefile", overwrite = T, append = F)
->>>>>>> c1b08be6b4cb52623a8472fc450fe22878d794cf
+
 ```
 
 ```{r sumTable}
