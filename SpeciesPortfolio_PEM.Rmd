@@ -59,24 +59,29 @@ if(dir.exists("C:/users/whmacken/Sync")){
   cloud_dir <- "C:/Users/kirid/Sync/CCISS_data/"
 }
 
-pem_name <- "PEM_QU_SBSdw2_1_Polygons2"
-pemOrig <- st_read(dsn = paste0(cloud_dir,"PortfolioFiles/QuesnelPem"), layer = pem_name)
-pemBGC <- unique(paste0(pemOrig$Bgc_Zone,pemOrig$Bgc_Subzon,pemOrig$Bgc_Vrt))
-pem <- pemOrig[pemOrig$Site_S1 != 0, c("AREA","PEM_QU_ID","Sdec_1","Site_S1","Sdec_2","Site_S2","Sdec_3","Site_S3")]
+pem_name <- "PEM_Clip"
+pemOrig <- st_read(dsn = paste0(cloud_dir,"PortfolioFiles/QuesnelPem/",pem_name,".gpkg"), layer = pem_name)
+pemOrig$BGC <- paste0(pemOrig$BGC_ZONE,pemOrig$BGC_SUBZON,pemOrig$BGC_VRT)
+pem <- pemOrig[pemOrig$SITE_S1 != "00", c("AREA","PEM_QU_ID","BGC","SDEC_1","SITE_S1","SDEC_2","SITE_S2","SDEC_3","SITE_S3")]
+colnames(pem) <- c("AREA","PEM_QU_ID","BGC", "Sdec_1","Site_S1","Sdec_2","Site_S2","Sdec_3","Site_S3","geometry")
 pem <- data.table(pem)
-pem <- pem[,.(geometry = st_union(geometry), AREA = sum(AREA)), by = .(Sdec_1,Site_S1,Sdec_2,Site_S2,Sdec_3,Site_S3)]
+pem <- pem[,.(geometry = st_union(geometry), AREA = sum(AREA), BGC = BGC[1]), 
+           by = .(Sdec_1,Site_S1,Sdec_2,Site_S2,Sdec_3,Site_S3)]
+pem[,BGC := gsub("NA","",BGC)]
 pem[,PolyID := seq_along(Sdec_1)]
 pem <- st_as_sf(pem)
-# pts <- st_sample(pem, size = rep(20, nrow(pem)), type = "random") %>% st_as_sf()
-# pts$ID <- rep(pem$PolyID, each = 20)
-# out <- cbind(pts$ID, st_coordinates(pts)) %>% as.data.table()
-# dem <- raster("D:/Kiri 2019/Data/bc25fill")
-# pts <- st_transform(pts, st_crs(dem))
-# out$el <- raster::extract(dem,pts)
-# out <- out[,.(ID1 = V1,ID2 = seq_along(Y),lat = Y,long = X, el)]
-# fwrite(out,"PemSamplePts.csv")
+
+pts <- st_sample(pem, size = rep(5, nrow(pem)), type = "random") %>% st_as_sf()
+pts$ID <- rep(pem$PolyID, each = 5)
+out <- cbind(pts$ID, st_coordinates(pts)) %>% as.data.table()
+dem <- raster("D:/Kiri 2019/Data/bc25fill")
+pts <- st_transform(pts, st_crs(dem))
+out$el <- raster::extract(dem,pts)
+out <- out[,.(ID1 = V1,ID2 = seq_along(Y),lat = Y,long = X, el)]
+fwrite(out,"PemSamplePts.csv")
 
 pemData <- st_drop_geometry(pem)
+pemData[,`:=`(AREA = NULL, BGC = NULL)]
 t1 <- melt(pemData, id.vars = "PolyID")
 t1 <- separate(t1, variable, into = c("Type","Num"), sep = "_")
 t1[,Num := gsub("S","",Num)]
@@ -365,7 +370,6 @@ registerDoParallel(cl)
 ```{r portfolio_function, message = TRUE}
 
 pemData <- pemData[!is.na(Site),]
-pemData[,Site := ifelse(nchar(Site) < 2, paste0("0",Site),Site)]
 pemData <- pemData[Site != "00",]
 
 timePeriods = c(2000,2025,2055)
@@ -373,10 +377,13 @@ returnValue = 0.9
 treeList <- Trees
 nSpp <- length(Trees)
 
-pemPort <- foreach(poly = unique(pemData$PolyID), .combine = loopCombine2) %do% {
+pemPort <- foreach(poly = unique(pemData$PolyID)[1:10], .combine = loopCombine2) %do% {
+    
   pemCurr <- pemData[PolyID == poly,]
   ss_units <- rep(pemCurr$Site, pemCurr$Sdec)
+  SSPredPoly <- SSPredOrig[SSPredOrig$SiteNo == poly,] %>% unique()
   cat("Processing polygon",poly,"...\n")
+  
   outAll <- foreach(
   SS = ss_units,
   .combine = loopCombine,
@@ -392,14 +399,12 @@ pemPort <- foreach(poly = unique(pemData$PolyID), .combine = loopCombine2) %do% 
     "scales"
   ),
   .noexport = c("gs2gw", "simGrowthCBST", "simGrowthCpp"),
-  .export = c("cleanData", "loopCombine")
-) %dopar% {
-  
+  .export = c("cleanData", "loopCombine")) %dopar% {
   reticulate::source_python("./PythonFns/PortfolioOptimisation.py") ##comment out this line if running sequentially
-  SSPredBGC <- SS_Subset(SSPredOrig,pos = SS)
-  SSList <- unique(SSPredBGC$SSCurrent)
-  SSout <-
-    foreach(selectBGC = SSList[1], .combine = loopCombine) %do% {
+  SSPredBGC <- SS_Subset(SSPredPoly,pos = SS)
+  if(nrow(SSPredBGC) > 0){
+      SSList <- unique(SSPredBGC$SSCurrent)
+  SSout <- foreach(selectBGC = SSList[1], .combine = loopCombine) %do% {
       SSPredAll <- SSPredBGC[SSPredBGC$SSCurrent == selectBGC, ] ##don't need this line?
       
       SiteList <- unique(SSPredAll$SiteNo)
@@ -561,33 +566,40 @@ pemPort <- foreach(poly = unique(pemData$PolyID), .combine = loopCombine2) %do% 
       }
       
     }
+  }
+
 }
 
 dat <- data.table(outAll$MaxS)
-dat <- dat[!Spp %chin% c("RealRet","Sd"), .(Weight = mean(value)), by = .(Spp)]
-setorder(dat, -Weight)
-datAll <- dat
-dat <- dat[1:5,]
-dat[,Weight := Weight/sum(Weight)]
-dat[,Weight := round(Weight*10,digits = 0)]
-dat <- dat[Weight != 0,]
-dat[,Lab := paste0(Spp,Weight)]
-sppLab <- paste(dat$Lab, collapse = "_")
-pemCurr$Lab <- paste0(pemCurr$Site,"[",pemCurr$Sdec,"]")
-pemLab <- paste0(pemBGC,"/",paste(pemCurr$Lab, collapse = ""))
-pSum <- data.frame(Polygon = pemLab,Spp = sppLab)
-datAll$PolyLab = pemLab
-datAll$PolyID = poly
-list(pemSum = pSum, allDat = datAll)
+if(nrow(dat) > 0){
+  dat <- dat[!Spp %chin% c("RealRet","Sd"), .(Weight = mean(value)), by = .(Spp)]
+  setorder(dat, -Weight)
+  datAll <- dat
+  dat <- dat[1:5,]
+  dat[,Weight := Weight/sum(Weight)]
+  dat[,Weight := round(Weight*10,digits = 0)]
+  dat <- dat[Weight != 0,]
+  dat[,Lab := paste0(Spp,Weight)]
+  sppLab <- paste(dat$Lab, collapse = "_")
+  pemCurr$Lab <- paste0(pemCurr$Site,"[",pemCurr$Sdec,"]")
+  pemLab <- paste0(pem$BGC[pem$PolyID == poly],"/",paste(pemCurr$Lab, collapse = ""))
+  pSum <- data.frame(Polygon = pemLab,Spp = sppLab)
+  datAll$PolyLab = pemLab
+  datAll$PolyID = poly
+  pSum$PolyID = poly
+  list(pemSum = pSum, allDat = datAll)
+}
+
 }
 
 
 ```
 
 ```{r add to pem}
-pemOut <- st_sf(data.frame(pemPort$pemSum,pem))
-st_write(pemOut, dsn = paste0(cloud_dir,"PortfolioFiles/QuesnelPem"), 
-         layer = "WithPortfolio", driver = "ESRI Shapefile", overwrite = T, append = F)
+temp <- as.data.table(pemPort$pemSum)
+pemOut <- temp[pem, on = "PolyID"]
+st_write(pemOut, dsn = paste0(cloud_dir,"PortfolioFiles/QuesnelPresentation"), 
+         layer = "PemPortfolio", driver = "ESRI Shapefile", overwrite = T, append = F)
 ```
 
 ```{r sumTable}
