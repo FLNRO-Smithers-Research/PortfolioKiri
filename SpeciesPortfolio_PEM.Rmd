@@ -40,6 +40,7 @@ require(tidyverse)
 require(Rmisc)
 require(bookdown)
 require(raster)
+require(webshot2)
 ```
 
 
@@ -596,10 +597,16 @@ if(nrow(dat) > 0){
 ```
 
 ```{r add to pem}
+<<<<<<< HEAD
 temp <- as.data.table(pemPort$pemSum)
 pemOut <- temp[pem, on = "PolyID"]
 st_write(pemOut, dsn = paste0(cloud_dir,"PortfolioFiles/QuesnelPresentation"), 
          layer = "PemPortfolio", driver = "ESRI Shapefile", overwrite = T, append = F)
+=======
+pemOut <- st_sf(data.frame(pemPort$pemSum,pem))
+st_write(pemOut, dsn = paste0(cloud_dir,"PortfolioFiles/QuesnelPem_Portfolios"), 
+         layer = "WithPortfolio", driver = "ESRI Shapefile", overwrite = T, append = F)
+>>>>>>> c1b08be6b4cb52623a8472fc450fe22878d794cf
 ```
 
 ```{r sumTable}
@@ -608,14 +615,15 @@ dat <- data.table::dcast(dat, PolyLab ~ Spp, value.var = "Weight")
 dat[is.na(dat)] <- 0
 pemArea <- pemOut[,c("Polygon","AREA")] %>% st_drop_geometry() %>% as.data.table()
 avg <- colMeans(dat[,-1])
-dat <- pemArea[dat, on = c(Polygon = "PolyLab")]
+dat <- pemArea[dat, on = c(Polygon = "PolyLab")] %>% mutate(AREA = AREA/10000) ###convert to ha from sq m
 ft1 <- flextable(dat) %>% colformat_num(digits = 2) %>% set_caption("Portfolio results for each polygon")
 ft1
 
-dat2 <- data.table(Spp = names(avg),Weight = avg)
-dat2 <- dat2[Weight >= 0.05, .(Spp = Spp,Weight = Weight/sum(Weight))]
-dat2[,Area := Weight*sum(dat$AREA)]
-dat2[,NumTrees := Area/2.2]
+dat2 <- data.table(Spp = names(avg),planting_ratio = avg)
+dat2 <- dat2[planting_ratio >= 0.05, .(Spp = Spp,planting_ratio = planting_ratio/sum(planting_ratio))]
+dat2[,Area := planting_ratio*sum(dat$AREA)]
+dat2[,NumTrees := Area*2066]# 2066 is the number of trees per ha at 2.2m spacing
 ft2 <- flextable(dat2) %>% colformat_num(digits = 2) %>% set_caption("Average weighting over whole study area")
 ft2
+save_as_image(ft2, path = "./outputs/planting_ratio.jpg")
 ```
