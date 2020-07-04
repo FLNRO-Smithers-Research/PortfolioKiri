@@ -119,7 +119,7 @@ eda <- fread("InputsGit/Edatopic_v11_20.csv")
 eda <- unique(eda[is.na(Special),.(BGC,SS_NoSpace, Edatopic)])
 
 #if(file.exists(paste0(cloud_dir,"CCISSPred.Rdata"))){
-#  load(paste0(cloud_dir,"CCISSPred.Rdata"))
+  load(paste0(cloud_dir,"CCISSPred.Rdata"))
 #}else{
   ### run CCISS function to predict Site Series
   load(paste0(cloud_dir, "WNAv11_35_VAR_SubZone_ranger.Rdata"))
@@ -425,6 +425,7 @@ pemPort <- foreach(poly = unique(pemData$PolyID), .combine = loopCombine2) %do% 
         #cat("Optimising site",SNum,"...\n")
         SS.sum <-
           cleanData(SSPredAll, SIBEC, SuitTable, SNum, Trees, timePer = timePeriods)
+
         if (any(is.na(SS.sum$MeanSuit))) {
           warning(
             "Missing Suitability in unit ",
@@ -438,7 +439,9 @@ pemPort <- foreach(poly = unique(pemData$PolyID), .combine = loopCombine2) %do% 
           SS.sum$MeanSuit[is.na(SS.sum$MeanSuit)] <-
             4
         }
-        SS.sum$FuturePeriod <-
+        
+        if (!is.null(SS.sum)) {
+          SS.sum$FuturePeriod <-
           as.numeric(SS.sum$FuturePeriod)
         if (length(timePeriods) == 1) {
           temp <- SS.sum
@@ -446,8 +449,6 @@ pemPort <- foreach(poly = unique(pemData$PolyID), .combine = loopCombine2) %do% 
             SS.sum$FuturePeriod[1] + 85
           SS.sum <- rbind(SS.sum, temp)
         }
-        
-        if (!is.null(SS.sum)) {
           annualDat <- data.frame("Year" = seq(2000, 2100, 1))
           
           output <-
@@ -621,5 +622,5 @@ dat2[,Area := planting_ratio*sum(dat$AREA)]
 dat2[,NumTrees := Area*2066]# 2066 is the number of trees per ha at 2.2m spacing
 ft2 <- flextable(dat2) %>% colformat_num(digits = 2) %>% set_caption("Average weighting over whole study area")
 ft2
-save_as_image(ft2, path = "./outputs/planting_ratio.jpg")
+save_as_image(ft2, path = paste0(cloud_dir,"PortfolioFiles/QuesnelPresentation3/","planting_ratio.pdf"))
 ```
