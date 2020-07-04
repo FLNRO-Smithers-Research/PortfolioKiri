@@ -74,9 +74,10 @@ pem <- st_as_sf(pem)
 
 pts <- st_sample(pem, size = rep(5, nrow(pem)), type = "random") %>% st_as_sf()
 pts$ID <- rep(pem$PolyID, each = 5)
-out <- cbind(pts$ID, st_coordinates(pts)) %>% as.data.table()
-dem <- raster("D:/Kiri 2019/Data/bc25fill")
+#dem <- raster("D:/Kiri 2019/Data/bc25fill")
+dem <-  raster(paste0(cloud_dir,"/CommonTables/BC_25m_DEM_WGS84.tif"))
 pts <- st_transform(pts, st_crs(dem))
+out <- cbind(pts$ID, st_coordinates(pts)) %>% as.data.table()
 out$el <- raster::extract(dem,pts)
 out <- out[,.(ID1 = V1,ID2 = seq_along(Y),lat = Y,long = X, el)]
 fwrite(out,"PemSamplePts.csv")
@@ -117,17 +118,17 @@ SIBEC <- SIBEC[,c("SS_NoSpace","Spp","SIPred")] %>% set_colnames(c("SS_NoSpace",
 eda <- fread("InputsGit/Edatopic_v11_20.csv")
 eda <- unique(eda[is.na(Special),.(BGC,SS_NoSpace, Edatopic)])
 
-if(file.exists(paste0(cloud_dir,"CCISSPred.Rdata"))){
-  load(paste0(cloud_dir,"CCISSPred.Rdata"))
-}else{
+#if(file.exists(paste0(cloud_dir,"CCISSPred.Rdata"))){
+#  load(paste0(cloud_dir,"CCISSPred.Rdata"))
+#}else{
   ### run CCISS function to predict Site Series
   load(paste0(cloud_dir, "WNAv11_35_VAR_SubZone_ranger.Rdata"))
   Edatope <- fread("./InputsGit/Edatopic_v11_20.csv",data.table = F)
   rawDat <- fread(paste0(cloud_dir,"PortfolioFiles/",inputDatName),data.table = F)
-  rawDat$ID2 <- pemBGC
+  rawDat$ID2 <- pem$BGC
   CCISSPred <- CCISS_Spp(Y1 = rawDat,BGCmodel = BGCmodel,E1 = Edatope)
   save(CCISSPred, file = paste0(cloud_dir,"CCISSPred.Rdata"))
-}
+#}
 
 SSPredOrig <- as.data.table(CCISSPred[[1]])
 colnames(SSPredOrig)[1] <- "MergedBGC"
@@ -378,7 +379,7 @@ returnValue = 0.9
 treeList <- Trees
 nSpp <- length(Trees)
 
-pemPort <- foreach(poly = unique(pemData$PolyID)[1:10], .combine = loopCombine2) %do% {
+pemPort <- foreach(poly = unique(pemData$PolyID), .combine = loopCombine2) %do% {
     
   pemCurr <- pemData[PolyID == poly,]
   ss_units <- rep(pemCurr$Site, pemCurr$Sdec)
@@ -599,7 +600,7 @@ if(nrow(dat) > 0){
 ```{r add to pem}
 temp <- as.data.table(pemPort$pemSum)
 pemOut <- temp[pem, on = "PolyID"]
-st_write(pemOut, dsn = paste0(cloud_dir,"PortfolioFiles/QuesnelPresentation"), 
+st_write(pemOut, dsn = paste0(cloud_dir,"PortfolioFiles/QuesnelPresentation3"), 
          layer = "PemPortfolio", driver = "ESRI Shapefile", overwrite = T, append = F)
 
 ```
@@ -608,7 +609,7 @@ st_write(pemOut, dsn = paste0(cloud_dir,"PortfolioFiles/QuesnelPresentation"),
 dat <- data.table(pemPort$allDat)
 dat <- data.table::dcast(dat, PolyLab ~ Spp, value.var = "Weight")
 dat[is.na(dat)] <- 0
-pemArea <- pemOut[,c("Polygon","AREA")] %>% st_drop_geometry() %>% as.data.table()
+pemArea <- pemOut[,c("Polygon","AREA")]  %>% as.data.table#%>% st_drop_geometry()
 avg <- colMeans(dat[,-1])
 dat <- pemArea[dat, on = c(Polygon = "PolyLab")] %>% mutate(AREA = AREA/10000) ###convert to ha from sq m
 ft1 <- flextable(dat) %>% colformat_num(digits = 2) %>% set_caption("Portfolio results for each polygon")
