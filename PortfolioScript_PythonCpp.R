@@ -283,15 +283,15 @@ ggplot(efAll[efAll$variable != "Sd",])+
 ####function to calculate parameters for gs2gw function given cutoff (default 0.9)
 ###for CBST Portfolio
 setGW <- function(k = 0.9){
-  dat <- data.frame(x = c(0.85,0.87,k,0.99,1), y = c(0,0,0.01,0.95,1))
+  dat <- data.frame(x = c(0.75,0.8,k,0.99,1), y = c(0,0.05,0.1,0.95,1))
   cont <- nls.control(maxiter = 500, minFactor = 1/5000, warnOnly = TRUE)
   fit <- nls(y ~ a*exp(x*b), data = dat, start = list(a = 5e-25, b = 55.9), control = cont)
   return(coef(fit))
 }
-params <- setGW(0.96)
+params <- setGW(0.9)
 ####plot gs2gw function to investigate############3
 x <- seq(0.85,1,by = 0.001)
-y <- gs2gw(x, params[1], params[2])
+y <- gs2gw(x, params[1], 45)
 plot(x,y, type = "l")
 #####################################
 
