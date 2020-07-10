@@ -266,9 +266,9 @@ edatopicSubset <- function(SSPredOrig, analUnits, eda, pos = "Zonal"){
 }
 
 loopCombine <- function(a,b){
-  G <- rbind(a$GraphDat,b$GraphDat)
-  df <- rbind(a$MaxS,b$MaxS)
-  return(list(GraphDat = G, MaxS = df))
+  df1 <- rbind(a$GraphDat,b$GraphDat)
+  df2 <- rbind(a$MaxS,b$MaxS)
+  return(list(GraphDat = df1, MaxS = df2))
 }
 
 ef_plot <- function(outAll){
@@ -580,7 +580,7 @@ modPeriod <- c(2025,2055)
 
 ###read in CBST data
 Trees <- c("Ba", "Bl","Cw","Dr", "Fd","Hw","Lw","Pl","Py","Sx") ##set species to use in portfolio
-allSppDat <- fread("FilledCBSTNoMigration_v2.csv")
+allSppDat <- fread(paste0(cloud_dir,"PortfolioFiles/FilledCBSTNoMigration_v2.csv"))
 ##import BGC prediction by model
 SSPredAll <- CCISS_cbst(rawDat,BGCmodel) %>% as.data.table()
 colnames(analUnits)[1] <- "SiteNo"
@@ -599,19 +599,19 @@ minAccept <- 0.05
 
 ```{r runCBST}
 Units <- unique(SSPredAll$BGC_analysis)
-out <- foreach(AU = Units, .combine = rbind) %do% {
+outAllCBST <- foreach(AU = Units, .combine = loopCombine) %do% {
   SSPredU <- SSPredAll[BGC_analysis == AU,]
   SppRes <- as.data.table(outAll$MaxS)
   SppRes <- SppRes[Unit == AU & !Spp %chin% c("Sd","RealRet"),]
   SppUse <- SppRes[SetRet > 0.25, Spp]
   SL = unique(SSPredU$SiteNo)
-  foreach(SppCurr = SppUse,.combine = rbind) %do% {
+  foreach(SppCurr = SppUse,.combine = loopCombine) %do% {
     SuitTable <- allSppDat[Spp == SppCurr,-"Spp"]
     
     allSites <- foreach(SNum = SL, .combine = rbind, .packages = c("reshape2","Rcpp","magrittr","scales","reticulate"), .noexport = 
                         c("gs2gw", "simGrowthCBST","simGrowthCpp")) %dopar% {
 
-    reticulate::source_python("../PythonFns/PortfolioOptimisation.py")
+    reticulate::source_python("./PythonFns/PortfolioOptimisation.py")
     
     SSPred <- SSPredU[SSPredU$SiteNo == SNum,]
     currBGC <- as.character(SSPred$BGC[1])
@@ -622,11 +622,10 @@ out <- foreach(AU = Units, .combine = rbind) %do% {
     SS.sum <- SS.sum[`2025` > 0.3,]
     SS.sum <- melt(SS.sum, id.vars = "Seed")
     colnames(SS.sum)[2:3] <- c("FuturePeriod","Height")
-    output <- data.frame(Return = numeric(), variable = character(), value = numeric(), Model = character())
-    temp <- unique(SSPred$Seed)
     
     SeedList <- unique(SS.sum$Seed)
     returns <- data.frame(Year = seq(2000,2000+modelYears,1))
+    modData <- data.table()
     
     for(seed in SeedList){
       htDat <- SS.sum[Seed == seed,-1]
@@ -640,12 +639,11 @@ out <- foreach(AU = Units, .combine = rbind) %do% {
       tmpR <- c(0,Returns)
       assets <- Returns - tmpR[-length(tmpR)]
       dat <- data.frame(Seed = rep(seed,modelYears+1), Year = 1:(modelYears+1), Returns = assets)
-      modData <- rbind(modData, dat)
+      modData <- rbind(modData, dat, fill = T)
     }
     modData <- dcast(modData, Year ~ Seed, value.var = "Returns")
     returns <- modData
-    rownames(returns) <- returns[,1]
-    returns <- returns[,-1]
+    returns <- returns[,-"Year"]
     sigma2 <- as.data.frame(cor(returns)) ###to create cov mat from return
     boundDat <- data.table(Spp = colnames(returns))
     boundDat[,`:=`(minWt = 0, maxWt = 1)]
@@ -653,20 +651,58 @@ out <- foreach(AU = Units, .combine = rbind) %do% {
     ef <- ef_weights_v2(returns, sigma2, boundDat, minAccept) 
     ef_w <- as.data.frame(ef[[1]])
     ef_w$Sd <- c(ef[[2]])
+    ef_w$RealRet <- ef[[3]]
+    ef_w$Sharpe <- ef[[4]]
+    ef_w$Return <- 1:20
     dat <- ef_w
-    dat$Return <- 1:20
-
     dat <- melt(dat, id.vars = "Return")
-    dat$Model <- mod
-    output <- rbind(output, dat)
-
-    output$SiteNo <- SNum
-    output
-}
+    dat$SiteNo <- SNum
+    dat
+                        }
+    allSites <- as.data.table(allSites)
+    allSites <- dcast(allSites, Return ~ variable, fun.aggregate = function(x){sum(x)/(length(SL))})
+    
+    maxSharpe <- allSites[allSites$Sharpe == max(allSites$Sharpe),-c("Return","Sharpe")]
+    maxSharpe <- t(maxSharpe) %>% as.data.frame() %>% 
+      mutate(Spp = rownames(.)) %>% set_colnames(c("Weight","Seed"))
+    maxSharpe <- maxSharpe[!maxSharpe$Seed %in% c("Sd","RealRet"),] %>% as.data.table()
+    maxSharpe <- maxSharpe[Weight > 0.04,]
+    maxSharpe[,`:=`(Weight = Weight/sum(Weight),Unit = AU, Spp = SppCurr)]
+    
+    temp <- colMeans(allSites[,-c("Return","Sd","RealRet","Sharpe")])
+    temp <- names(temp[temp > 0.04])
+    varDat <- allSites[,..temp]
+    idDat <- allSites[,.(Return,Sd)]
+    allSites <- cbind(idDat,varDat)
+    allSites <- melt(allSites, id.vars = c("Return","Sd"))
+    allSites <- allSites[,.(Weight = value/sum(value), Seed = variable), by = .(Return, Sd)]
+    allSites[,`:=`(Unit = AU, Spp = SppCurr)]
+    list(GraphDat = allSites, MaxS = maxSharpe)
   }
 }
 
                         
+```
+
+```{r plotCBST, fig.height = 13, fig.width = 12}
+efAll <- as.data.table(outAllCBST$GraphDat)
+efAll <- efAll[complete.cases(efAll),]
+
+ggplot(efAll,aes(x = Sd, y = Weight,group = Seed))+
+  geom_area(aes(fill = Seed), size = 0.00001, col = "grey50", stat = "identity")+
+  scale_x_reverse() +
+  xlab("Max Return --> Minimized Risk")+
+  ylab("Portfolio Ratio")+
+  theme_few()+
+  facet_wrap(.~Unit+Spp, scales = "free_x")
+```
+
+```{r CBST_maxS,fig.width = 8.5, fig.height = 9}
+dat <- outAllCBST$MaxS
+ggplot(dat, aes(x = Spp, y = Weight, group = Seed, fill = Seed))+
+  geom_bar(stat = "identity")+
+  facet_wrap(.~Unit, scales = "free_x")+
+  theme_few()
 ```
 
 
