@@ -129,7 +129,7 @@ eda <- unique(eda[is.na(Special),.(BGC,SS_NoSpace, Edatopic)])
   CCISSPred <- CCISS_Spp(Y1 = rawDat,BGCmodel = BGCmodel,E1 = Edatope)
   save(CCISSPred, file = paste0(cloud_dir,"CCISSPred.Rdata"))
 #}
-
+  load(paste0(cloud_dir,"CCISSPred.Rdata"))
 SSPredOrig <- as.data.table(CCISSPred[[1]])
 colnames(SSPredOrig)[1] <- "MergedBGC"
 
@@ -154,6 +154,8 @@ seecol(myPal, hex = T, rgb = F)
 ```{r CCISS predictions}
 #Function to clean and summarise SIBEC and CCISS data into MeanSI and MeanSuitability
 ##function to clean data and summarise 
+
+
 cleanData <- function(SSPredAll,SIBEC,SuitTable,SNum,Trees,timePer){
   SSPred <- SSPredAll[SiteNo == SNum,] ###subset
   
@@ -601,7 +603,7 @@ if(nrow(dat) > 0){
 ```{r add to pem}
 temp <- as.data.table(pemPort$pemSum)
 pemOut <- temp[pem, on = "PolyID"]
-st_write(pemOut, dsn = paste0(cloud_dir,"PortfolioFiles/QuesnelPresentation3"), 
+st_write(pemOut, dsn = paste0(cloud_dir,"PortfolioFiles/QuesnelPresentation4"), 
          layer = "PemPortfolio", driver = "ESRI Shapefile", overwrite = T, append = F)
 
 ```
