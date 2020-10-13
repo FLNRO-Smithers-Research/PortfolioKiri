@@ -62,11 +62,7 @@ colnames(allSppDat) <- c("Site","Seed","Height", "Spp")
 
 
 ##import BGC prediction by model
-SSPredAll <- fread("CBSTPredFirePoints.csv")##import BGC predictions from CCISS script
-BGC <- "IDFdk3" ###select BGC
-SSPredAll <- SSPredAll[BGC == BGC,]
-SSPredAll <- SSPredAll[grep("Ele",SSPredAll$SiteNo),]
-SSPredAll <- SSPredAll[FuturePeriod %in% modPeriod,]
+SSPredAll <- CCISS_cbst(rawDat,BGCmodel)
 ```
 
 ### Setup parallelisation
