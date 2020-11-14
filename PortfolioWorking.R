@@ -158,8 +158,11 @@ edatopicSubset <- function(SSPredOrig, eda, pos = "Zonal"){
   SSPredFull[,SiteNo := as.numeric(SiteNo)]
 }
 
-SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.35,1,1.8,3), 
-                       "NoMort" = c(70,60,50,30), "RuinSeverity" = c(0.4,0.5,0.7,0.8)) ####ProbDead- out of 100 trees, how many will die each year at each suitability. NoMort- Percent of time no mortality
+
+####ProbDead- out of 100 trees, how many will die each year at each suitability. NoMort- Percent of time no mortality
+#SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.35,1,1.8,4), "NoMort" = c(70,60,50,30), "RuinSeverity" = c(0.4,0.5,0.7,0.8)) 
+SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.35,1,1.8,3), "NoMort" = c(70,60,50,30), "RuinSeverity" = c(0.7,0.7,0.7,0.7))                        
+
 
 minAccept <- 0.01 ##min acceptable weight in porfolio - if lower, will remove and re-optimize
 
@@ -340,4 +343,5 @@ ggplot(simNumTree, aes(x = variable, y = value))+
   geom_violin(draw_quantiles = 0.5)+
   labs(x = "Portfolio Choice", y = "# of Trees")+
   ggtitle(BGC)
+
     
