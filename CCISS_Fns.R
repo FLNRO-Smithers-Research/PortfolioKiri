@@ -25,6 +25,87 @@ addVars <- function(dat){
   return(dat)
 }
 
+edatopicOverlap <- function(dat,Edatope){
+  SS <- Edatope[is.na(Special),.(BGC,SS_NoSpace,Edatopic)]
+  SS <- unique(SS)
+  SS <- SS[complete.cases(SS),]
+  BGC <- unique(dat)
+  BGC <- BGC[complete.cases(BGC),]
+  SSsp <- Edatope[!is.na(Codes),.(BGC,SS_NoSpace,Codes)]
+  SSsp <- unique(SSsp)
+  
+  ##Special edatopes
+  CurrBGC <- SSsp[BGC, on = "BGC", allow.cartesian = T]
+  setkey(BGC, BGC.pred)
+  setkey(SSsp, BGC)
+  FutBGC <- SSsp[BGC, allow.cartesian = T]
+  setnames(FutBGC, old = c("BGC","SS_NoSpace","i.BGC"), 
+           new = c("BGC.pred","SS.pred","BGC"))
+  FutBGC <- FutBGC[!is.na(SS.pred),]
+  setkey(FutBGC, SiteNo, FuturePeriod, BGC,BGC.pred, Codes)
+  setkey(CurrBGC,SiteNo,FuturePeriod, BGC,BGC.pred, Codes)
+  new <- CurrBGC[FutBGC]
+  SSsp.out <- new[,.(allOverlap = 1/.N,SS.pred,BGC.prop), keyby = .(SiteNo,FuturePeriod,BGC,BGC.pred,SS_NoSpace)]
+  
+  ##regular
+  CurrBGC <- SS[BGC, on = "BGC", allow.cartesian = T]
+  setkey(BGC, BGC.pred)
+  setkey(SS, BGC)
+  FutBGC <- SS[BGC, allow.cartesian = T]
+  setnames(FutBGC, old = c("BGC","SS_NoSpace","i.BGC"), 
+           new = c("BGC.pred","SS.pred","BGC"))
+  
+  setkey(FutBGC, SiteNo, FuturePeriod, BGC,BGC.pred, Edatopic)
+  FutBGC[,BGC.prop := NULL]
+  setkey(CurrBGC,SiteNo,FuturePeriod, BGC,BGC.pred, Edatopic)
+  new <- merge(CurrBGC,FutBGC, all = T)
+  setkey(new, SiteNo,FuturePeriod,BGC,BGC.pred,SS_NoSpace,SS.pred)
+  ##new <- new[complete.cases(new),]
+  
+  ###forwards overlap
+  SS.out <- new[,.(SS.prob = .N), 
+                keyby = .(SiteNo,FuturePeriod,BGC,BGC.pred,SS_NoSpace,SS.pred)]
+  SS.out2 <- new[,.(SS.Curr = length(unique(Edatopic)), BGC = unique(BGC.prop)), 
+                 keyby = .(SiteNo,FuturePeriod,BGC,BGC.pred,SS_NoSpace)]
+  comb <- SS.out2[SS.out]
+  
+  ###reverse overlap
+  SS.out.rev <- new[,.(SS.prob = .N), 
+                    keyby = .(SiteNo,FuturePeriod,BGC,BGC.pred,SS.pred,SS_NoSpace)]
+  SS.out2.rev <- new[,.(SS.Curr = length(unique(Edatopic)), BGC = unique(BGC.prop)), 
+                     keyby = .(SiteNo,FuturePeriod,BGC,BGC.pred,SS.pred)]
+  SS.out2.rev <- SS.out2.rev[complete.cases(SS.out2.rev),]
+  combRev <- SS.out2.rev[SS.out.rev]
+  
+  ##combine them
+  comb[,SSProb := SS.prob/SS.Curr]
+  combRev[,SSProbRev := SS.prob/SS.Curr]
+  combAll <- merge(comb,combRev,by = c("SiteNo","FuturePeriod","BGC","BGC.pred","SS_NoSpace","SS.pred"))
+  combAll[,allOverlap := SSProb*SSProbRev]
+  setnames(combAll, old = "BGC.1.x",new = "BGC.prop")
+  combAll <- combAll[,.(SiteNo, FuturePeriod, BGC, BGC.pred, SS_NoSpace, 
+                        allOverlap, SS.pred, BGC.prop)]
+  combAll <- rbind(combAll, SSsp.out)
+  combAll <- combAll[!is.na(SS_NoSpace),]
+  
+  ##add in BGC probability
+  combAll <- combAll[complete.cases(combAll),]
+  combAll[,SSratio := allOverlap/sum(allOverlap), by = .(SiteNo, FuturePeriod, BGC, BGC.pred,SS_NoSpace)] ##should check this?
+  setorder(combAll, SiteNo, FuturePeriod, BGC, BGC.pred, SS_NoSpace)
+  
+  combAll <- unique(combAll)
+  setkey(combAll, SiteNo, FuturePeriod, BGC,BGC.pred)
+  temp <- unique(combAll[,.(SiteNo,FuturePeriod,BGC,BGC.pred,BGC.prop)])
+  temp[,BGC.prop := BGC.prop/sum(BGC.prop), by = .(SiteNo,FuturePeriod,BGC)]
+  temp <- unique(temp)
+  combAll[,BGC.prop := NULL]
+  combAll <- temp[combAll]
+  combAll[,SSprob := SSratio*BGC.prop]
+  
+  return(combAll)
+}
+
+
 CCISS_cbst <- function(Y1,BGCmodel){
   Y1 <- addVars(Y1)
   
@@ -53,7 +134,7 @@ CCISS_Spp <- function(Y1,BGCmodel,E1){
   vars <- BGCmodel[["forest"]][["independent.variable.names"]]
   varList = c("Model", "SiteNo", "BGC", vars)
   colnames (Y1) [1:3] = c("Model", "SiteNo", "BGC")
-  Y1=Y1[,varList]
+  Y1=Y1[,..varList]
   
   Y1$BGC <- as.factor(Y1$BGC)
   
@@ -64,20 +145,6 @@ CCISS_Spp <- function(Y1,BGCmodel,E1){
   Y1$FuturePeriod <- gsub(".gcm","",Y1$FuturePeriod)
   Y1 <- Y1[,c("GCM","Scenario","FuturePeriod","SiteNo","BGC","BGC.pred")]
   
-  #E1 <-fread("./InputsGit/Edatopic_v11_7.csv")
-  
-  E1 <- E1[,-c(7:12)]
-  E1 <- unique(E1)
-  
-  ###create list of focal BGCs & edatopic space
-  e1 <- unique(Y1$BGC)
-  edatopic1 <- E1[E1$BGC %in% e1,]
-  edatopic1$Codes[edatopic1$Codes == ""] <- NA
-  
-  ###create list of predicted BGCs and edatopic space
-  e2 <- unique(Y1$BGC.pred)
-  edatopic2 <- E1[E1$BGC %in% e2,]
-  edatopic2$Codes[edatopic2$Codes == ""] <- NA
   
   ##calculate BGC proportion
   Y3.sub1 <-Y1
@@ -92,117 +159,11 @@ CCISS_Spp <- function(Y1,BGCmodel,E1){
   Y3.sub1$BGC.prop <- Y3.sub1$Pred.len/Y3.sub1$BGC.len
   Y3.sub1 <- Y3.sub1[order(Y3.sub1$SiteNo,Y3.sub1$FuturePeriod,Y3.sub1$BGC,Y3.sub1$BGC.pred),]
   
+  Y3.sub1 <- as.data.table(Y3.sub1)
+  Y3.sub1[,`:=`(BGC.len = NULL, Pred.len = NULL)]
   
-  BGClist = unique(Y3.sub1$BGC)
-  FuturePeriod.list <- unique(Y3.sub1$FuturePeriod)
-  BGCfutures.list <- unique(Y3.sub1$BGC.pred) ### to use later on to limit the site series
-  BGCfocalE <- edatopic1[edatopic1$BGC %in% Y3.sub1$BGC  ,] ### extracts edatopic space for BGC focal of SiteNo
-  BGCfutureE <- edatopic2[edatopic2$BGC %in% Y3.sub1$BGC.pred  ,] #extracts edatopic info only for predicted BGCs
-  Y3.sub1$SiteNo <- as.character(Y3.sub1$SiteNo)
-  SiteNo.list = unique(Y3.sub1$SiteNo)
-  Y3.sub1$BGC <- as.character(Y3.sub1$BGC)
-  Y3.sub1$BGC.pred <- as.character(Y3.sub1$BGC.pred)
+  SiteNo.suit <- edatopicOverlap(Y3.sub1, E1)
   
-  gc()
-  
-  coreNum <- as.numeric(detectCores()-1)
-  coreNo <- makeCluster(coreNum)
-  registerDoParallel(coreNo, cores = coreNum)
-  
-  edaOverlap <- function(dat1, dat2){
-    return(length(dat1[dat1 %in% dat2])/length(dat2))
-  }
-  
-  SiteNo.suit <-  foreach(SNL = SiteNo.list, .combine = rbind, .packages = c("doBy","foreach")) %dopar% {##  for each SiteNo in the data
-    
-    SiteFuture.suit <- foreach(i = FuturePeriod.list, .combine = rbind)  %do% {
-      
-      Y3.each <- Y3.sub1[Y3.sub1$SiteNo %in% SNL ,] ## extracts data for each site
-      Y3.each <- Y3.each[Y3.each$FuturePeriod %in% i,] ##extracts data for each time period
-      Y3.BGC <- unique(Y3.each$BGC)
-      Y3.BGC.pred<- unique(Y3.each$BGC.pred)
-      BGCfocalE <- edatopic1[edatopic1$BGC %in% Y3.BGC  , ] ### extracts edatopic space for BGC focal of SiteNo
-      BGCfutureE <- edatopic2[edatopic2$BGC %in% Y3.BGC.pred  , ] #extracts edatopic info only for predicted BGCs
-      
-      Y3.SSlist = as.list(unique(BGCfocalE$SS_NoSpace))
-      
-      FTS2 <-  foreach(SS = Y3.SSlist, .combine =rbind, .packages = c("doBy","foreach")) %do% {      ##  for each site series for a SiteNo BGC
-        
-        SSfocal <- BGCfocalE[BGCfocalE$SS_NoSpace %in% SS ,] ###find focal site series cells
-        SSfocalE <- as.list(unique(SSfocal$Edatopic))
-        
-        ##select site series only with some edatopic overlap with SSfocal
-        
-        SSfutureE <- BGCfutureE[BGCfutureE$Edatopic %in% SSfocalE,]
-        futureZones <- unique(SSfutureE$BGC)
-        futureSS.names <- unique(SSfutureE$SS_NoSpace)
-        if(length(SSfutureE$Edatopic) > 0){
-          
-          SSfocal <- BGCfocalE[BGCfocalE$SS_NoSpace %in% SS,]
-          SSfuture <- BGCfutureE[BGCfutureE$SS_NoSpace %in% futureSS.names,]
-          
-          ##match site series within each projected subzone
-          futureSS <- foreach(futSS = futureZones, .combine = rbind) %do% {
-            dat <- SSfuture[SSfuture$BGC == futSS,]
-            fut <- dat[dat$Edatopic %in% SSfocal$Edatopic,]
-            if(any(fut$Codes[!is.na(fut$Codes)] %in% SSfocal$Codes[!is.na(SSfocal$Codes)]) & (length(fut$Codes[!is.na(fut$Codes)])/length(fut$Edatopic)) > 0.1){###Are there matchin special edatopic cells?
-              oldSp <- unique(SSfocal$Codes[!is.na(SSfocal$Codes)])
-              newSp <- unique(fut$SS_NoSpace[match(oldSp, fut$Codes)])
-              dat <- unique(dat[dat$SS_NoSpace %in% newSp, -c(4:5)]) #which ones have the new special edatope
-              dat$alloverlap <- 1/length(dat$SS_NoSpace)
-              
-            }else{
-              if(all(is.na(SSfocal$Codes))){
-                dat <- dat[is.na(dat$Codes),] ####remove special edatopes
-              }
-              dat <- foreach(x = unique(as.character(dat$SS_NoSpace)), .combine = rbind) %do% {
-                dat1 <- dat[dat$SS_NoSpace == x,]
-                Overlap <- edaOverlap(SSfocal$Edatopic, dat1$Edatopic)
-                Revoverlap <- edaOverlap(dat1$Edatopic, SSfocal$Edatopic)
-                dat1 <- unique(dat1[-c(4:5)])
-                dat1$alloverlap <- Overlap*Revoverlap
-                dat1 <- as.data.frame(dat1)
-              }
-              ##if not special, loop through each SS to calculate overlap
-              
-            }
-            dat
-          }
-          
-          if(length(futureSS) > 0){
-            futureSS <- futureSS[futureSS$alloverlap > 0,] ###Adjust this to remove low overlap SS
-            Y3.each <- unique(Y3.each)
-            Y3.each <- Y3.each[Y3.each$BGC.pred %in% futureSS$BGC,] ###Remove predictions with no overlap and recalculate
-            Y3.each$BGC.prop <- Y3.each$BGC.prop/sum(Y3.each$BGC.prop)
-            futureSS <- merge(futureSS, Y3.each[,c("BGC.pred","BGC.prop")], by.x = "BGC", by.y = "BGC.pred", all.x = TRUE)
-            
-            
-            ####Calculate the SS ratio
-            SSoverlap <- summaryBy(alloverlap~BGC, data=futureSS, id = 'SS_NoSpace', FUN=c(sum))
-            futureSS$overlaptot<- SSoverlap$alloverlap.sum[match(futureSS$BGC, SSoverlap$BGC )]
-            futureSS$SSratio <- futureSS$alloverlap/futureSS$overlaptot
-    
-            ####Calculated the overall site series probability
-            futureSS$SSprob <- (futureSS$BGC.prop * futureSS$SSratio)
-            sum(futureSS$SSprob)
-            
-            futureSS$SSCurrent <- rep(SS,length(futureSS$SSprob))
-            futureSS <- futureSS[,-c(4:7)]
-            
-            futureSS$FuturePeriod <- as.character(i)  
-            futureSS$SiteNo <- as.character(SNL)
-            
-            futureSS <- as.data.frame(futureSS)
-          }else{
-            warning("No matching edatopes - some predictions have been removed")
-          }
-        }
-        
-      } #For each Site
-    } #For each year
-    
-  } # for all
-  stopCluster(coreNo)
   return(list(SiteNo.suit[!is.na(SiteNo.suit$SSprob),],Pred.len))
 }
 
