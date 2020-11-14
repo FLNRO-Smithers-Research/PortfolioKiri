@@ -1,5 +1,5 @@
 ---
-title: "Climate Change Optimized Species Portfolio for Reforestation Planning:Sunshine Coast"
+title: "Climate Change Optimized Species Portfolio for Reforestation Planning: Sunshine Coast"
 author: "Will MacKenzie and Kiri Daust"
 date: "17/05/2020"
 output:
@@ -60,13 +60,13 @@ source("CCISS_Fns.R")
 ```{r load species data}
 ##Load data and run CCISS functions (if necessary)
 
-inputDatName <- "SunshPntsNew_90 GCMsMSY.csv" ##generated in ClimateBC for all variable and all future climate scenarios
+inputDatName <- "PortPoints_Quesnel_90 GCMsMSY.csv" ##generated in ClimateBC for all variable and all future climate scenarios
 
 ##Set drive with cloud data
 if(dir.exists("C:/users/whmacken/Sync")){
   cloud_dir <- "C:/users/whmacken/Sync/CCISS_data/"
 }else{
-  cloud_dir <- "C:/Users/kirid/Sync/CCISS_data/"
+  cloud_dir <- "./PortfolioData/"
 }
 
 ###Read in data
@@ -96,16 +96,16 @@ if(file.exists(paste0(cloud_dir,"CCISSPred.Rdata"))){
   load(paste0(cloud_dir,"CCISSPred.Rdata"))
 }else{
   ### run CCISS function to predict Site Series
-  load(paste0(cloud_dir, "WNAv11_35_VAR_SubZone_ranger.Rdata"))
+  load(paste0(cloud_dir, "WNA_Subzone_17Var_extratree.Rdata"))
   Edatope <- fread("./InputsGit/Edatopic_v11_20.csv",data.table = F)
-  rawDat <- fread(paste0(cloud_dir,"PortfolioFiles/",inputDatName),data.table = F)
+  rawDat <- fread(paste0(cloud_dir,inputDatName),data.table = F)
   CCISSPred <- CCISS_Spp(Y1 = rawDat,BGCmodel = BGCmodel,E1 = Edatope)
   save(CCISSPred, file = paste0(cloud_dir,"CCISSPred.Rdata"))
 }
 
 SSPredOrig <- as.data.table(CCISSPred[[1]])
 colnames(SSPredOrig)[1] <- "MergedBGC"
-analUnits <- fread(paste0(cloud_dir,"PortfolioFiles/AnalysisUnits.csv"))
+analUnits <- fread("./InputsGit/AnalysisUnits.csv")
 
 ```
 
