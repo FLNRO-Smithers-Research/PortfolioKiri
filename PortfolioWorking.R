@@ -104,8 +104,12 @@ edatopicSubset <- function(SSPredOrig, eda, pos = "Zonal"){
   SSPredFull[,SiteNo := as.numeric(SiteNo)]
 }
 
-SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.35,1,1.8,4), 
-                       "NoMort" = c(70,60,50,30), "RuinSeverity" = c(0.4,0.5,0.7,0.8)) ####ProbDead- out of 100 trees, how many will die each year at each suitability. NoMort- Percent of time no mortality
+####ProbDead- out of 100 trees, how many will die each year at each suitability. NoMort- Percent of time no mortality
+#SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.35,1,1.8,4), "NoMort" = c(70,60,50,30), "RuinSeverity" = c(0.4,0.5,0.7,0.8)) 
+SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.35,1,1.8,4), "NoMort" = c(70,60,50,30), "RuinSeverity" = c(0.7,0.7,0.7,0.7))                        
+
+
+
 
 minAccept <- 0.01 ##min acceptable weight in porfolio - if lower, will remove and re-optimize
 
@@ -271,4 +275,5 @@ BGC = Units[1]##select BGC
     ggplot(allSitesSpp, aes(x = variable, y = value))+
       geom_violin()+
       labs(x = "Portfolio Choice", y = "Volume of Stand")    
+    
     
