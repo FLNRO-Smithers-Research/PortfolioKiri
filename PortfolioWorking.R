@@ -16,7 +16,7 @@ require(Rmisc)
 
 ##Set drive with cloud data
 if(dir.exists("C:/users/whmacken/Sync")){
-  cloud_dir <- "C:/users/whmacken/Sync/CCISS_data/"
+  cloud_dir <- "C:/users/whmacken/Sync/Portfolio_Work/"
 }else{
   cloud_dir <- "./inputs/"
 }
@@ -161,8 +161,8 @@ edatopicSubset <- function(SSPredOrig, eda, pos = "Zonal"){
 
 ####ProbDead- out of 100 trees, how many will die each year at each suitability. NoMort- Percent of time no mortality
 #SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.35,1,1.8,4), "NoMort" = c(70,60,50,30), "RuinSeverity" = c(0.4,0.5,0.7,0.8)) 
-SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.35,1,1.8,3), "NoMort" = c(70,60,50,30), "RuinSeverity" = c(0.7,0.7,0.7,0.7))                        
-
+#SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.1,0.2,0.3, 1), "NoMort" = c(95,85,75,50), "RuinSeverity" = c(0.5,0.5,0.5,1))                        
+SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.1,0.2,0.3, 1), "NoMort" = c(95,85,75,50), "RuinSeverity" = c(0.3,0.35,0.4,.8))
 
 minAccept <- 0.01 ##min acceptable weight in porfolio - if lower, will remove and re-optimize
 
@@ -194,7 +194,7 @@ nSpp <- length(Trees)
 Units <- unique(SSPredFull$BGC_analysis)
 
 ###SELECT BGC
-BGC = Units[2]
+BGC = Units[3]
   
 SSPredBGC <- SSPredFull[BGC_analysis == BGC,-("BGC_analysis")]
 SSList <- unique(SSPredBGC$SSCurrent)
