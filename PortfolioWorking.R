@@ -15,10 +15,6 @@ require(tidyverse)
 require(Rmisc)
 library(tictoc)
 
-
-
-dat <- fread(file.choose())
-dat2 <- dat[ID2 == 1,]
 ##Set drive with cloud data
 if(dir.exists("C:/users/whmacken/Sync")){
   cloud_dir <- "C:/users/whmacken/Sync/Portfolio_Work/"
@@ -55,6 +51,53 @@ load(paste0(cloud_dir, "WNA_Subzone_17Var_extratree.Rdata"))##BGC model
 Edatope <- fread("./InputsGit/Edatopic_v11_20.csv",data.table = T)
 rawDat <- fread(paste0(cloud_dir,inputDatName),data.table = T)
 CCISSPred <- CCISS_Spp(Y1 = rawDat,BGCmodel = BGCmodel,E1 = as.data.table(Edatope))
+
+###model climate variability
+dat2 <- rawDat[ID1 == 75,]
+dat2[,c("GCM","Scenario","FuturePeriod") := tstrsplit(Year, "_")]
+dat2 <- dat2[,.(GCM,FuturePeriod,Scenario,CMD,Tmin_sp,Tmin_sm,Tmax_sp,Tmax_sm)]
+dat2[,FuturePeriod := as.numeric(gsub(".gcm","",FuturePeriod))]
+dat2 <- dat2[,lapply(.SD,mean), by = .(FuturePeriod), .SDcols = -c("GCM","Scenario")]
+
+annDat <- fread("PortPoints_Quesnel_1960-2019MSY.csv")
+ann2 <- annDat[ID2 == "SBSmw",.(Year,ID1,CMD,Tmin_sp,Tmax_sm)]
+
+hist(ann2$CMD)
+library(fitdistrplus)
+f1 <- fitdist(ann2$CMD, "norm")
+denscomp(f1)
+
+climParams <- list()
+for(i in c("CMD","Tmin_sp","Tmax_sm")){
+  f1 <- fitdist(ann2[[i]], "norm")
+  climParams[[i]] <- f1$estimate
+}
+
+##tmin
+dat <- data.table(Year = c(2000,2025,2055,2085),Mean = c(climParams$Tmax_sm[1],dat2$Tmax_sm))
+s <- approx(dat$Year, dat$Mean, n = 101) ##Smooth SI
+res <- numeric()
+for(i in 1:100){
+  res[i] <- rnorm(1,mean = s$y[i],sd = climParams$Tmax_sm[2])
+}
+simRes <- data.table(Year = 2001:2100, Value = res)
+
+temp <- SuitTable[Suitability == 1 & Spp == "Fd",]
+sppUnits <- unique(temp$BGC)
+
+library(RPostgreSQL)
+drv <- dbDriver("PostgreSQL")
+con <- dbConnect(drv, user = "postgres", password = "Kiriliny41", host = "localhost", 
+                 port = 5432, dbname = "bgc_climate_data")
+
+climSum <- dbGetQuery(con, paste0("select bgc,period,var,cmd,tmin_sp,tmax_sm from climsum_curr_v12 where bgc in ('"
+                                  ,paste(sppUnits,collapse = "','"),"') and period = '1991 - 2019'"))
+climSum <- as.data.table(climSum)
+climSum2 <- climSum[,.(CMDMin = min(cmd), CMDMax = max(cmd),Tlow = min(tmin_sp),Thigh = max(tmax_sm)), by = .(var)]
+
+ggplot(data = simRes, aes(x = Year, y = Value))+
+  geom_line()+
+  geom_hline(yintercept = climSum2$Thigh[1], col = "red")
 
 ###rename and cleanup
 SSPredOrig <- as.data.table(CCISSPred[[1]])
