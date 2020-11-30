@@ -13,12 +13,13 @@ library(ggthemes)
 require(rgdal)
 require(tidyverse)
 require(Rmisc)
+library(tictoc)
 
 ##Set drive with cloud data
 if(dir.exists("C:/users/whmacken/Sync")){
   cloud_dir <- "C:/users/whmacken/Sync/Portfolio_Work/"
 }else{
-  cloud_dir <- "./inputs/"
+  cloud_dir <- "./PortfolioData/"
 }
 
 ## source functions
@@ -46,10 +47,57 @@ eda <- fread("InputsGit/Edatopic_v11_20.csv")
 eda <- unique(eda[is.na(Special),.(BGC,SS_NoSpace, Edatopic)])
 
 ###run cciss predict
-load(paste0(cloud_dir, "WNAv11_35_VAR_SubZone_ranger.Rdata"))##BGC model
+load(paste0(cloud_dir, "WNA_Subzone_17Var_extratree.Rdata"))##BGC model
 Edatope <- fread("./InputsGit/Edatopic_v11_20.csv",data.table = T)
 rawDat <- fread(paste0(cloud_dir,inputDatName),data.table = T)
 CCISSPred <- CCISS_Spp(Y1 = rawDat,BGCmodel = BGCmodel,E1 = as.data.table(Edatope))
+
+###model climate variability
+dat2 <- rawDat[ID1 == 75,]
+dat2[,c("GCM","Scenario","FuturePeriod") := tstrsplit(Year, "_")]
+dat2 <- dat2[,.(GCM,FuturePeriod,Scenario,CMD,Tmin_sp,Tmin_sm,Tmax_sp,Tmax_sm)]
+dat2[,FuturePeriod := as.numeric(gsub(".gcm","",FuturePeriod))]
+dat2 <- dat2[,lapply(.SD,mean), by = .(FuturePeriod), .SDcols = -c("GCM","Scenario")]
+
+annDat <- fread("PortPoints_Quesnel_1960-2019MSY.csv")
+ann2 <- annDat[ID2 == "SBSmw",.(Year,ID1,CMD,Tmin_sp,Tmax_sm)]
+
+hist(ann2$CMD)
+library(fitdistrplus)
+f1 <- fitdist(ann2$CMD, "norm")
+denscomp(f1)
+
+climParams <- list()
+for(i in c("CMD","Tmin_sp","Tmax_sm")){
+  f1 <- fitdist(ann2[[i]], "norm")
+  climParams[[i]] <- f1$estimate
+}
+
+##tmin
+dat <- data.table(Year = c(2000,2025,2055,2085),Mean = c(climParams$Tmax_sm[1],dat2$Tmax_sm))
+s <- approx(dat$Year, dat$Mean, n = 101) ##Smooth SI
+res <- numeric()
+for(i in 1:100){
+  res[i] <- rnorm(1,mean = s$y[i],sd = climParams$Tmax_sm[2])
+}
+simRes <- data.table(Year = 2001:2100, Value = res)
+
+temp <- SuitTable[Suitability == 1 & Spp == "Fd",]
+sppUnits <- unique(temp$BGC)
+
+library(RPostgreSQL)
+drv <- dbDriver("PostgreSQL")
+con <- dbConnect(drv, user = "postgres", password = "Kiriliny41", host = "localhost", 
+                 port = 5432, dbname = "bgc_climate_data")
+
+climSum <- dbGetQuery(con, paste0("select bgc,period,var,cmd,tmin_sp,tmax_sm from climsum_curr_v12 where bgc in ('"
+                                  ,paste(sppUnits,collapse = "','"),"') and period = '1991 - 2019'"))
+climSum <- as.data.table(climSum)
+climSum2 <- climSum[,.(CMDMin = min(cmd), CMDMax = max(cmd),Tlow = min(tmin_sp),Thigh = max(tmax_sm)), by = .(var)]
+
+ggplot(data = simRes, aes(x = Year, y = Value))+
+  geom_line()+
+  geom_hline(yintercept = climSum2$Thigh[1], col = "red")
 
 ###rename and cleanup
 SSPredOrig <- as.data.table(CCISSPred[[1]])
@@ -165,6 +213,10 @@ edatopicSubset <- function(SSPredOrig, eda, pos = "Zonal"){
 SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.1,0.2,0.3, 1), "NoMort" = c(95,85,75,50))#, "RuinSeverity" = c(1,2,3,4))
 #SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.35,1,1.8,4)), "NoMort" = c(95,85,75,50) 
 ProbPest <- 1/100 ## annual probability of an outbreak for a species
+
+#SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.1,0.2,0.3, 1), "NoMort" = c(95,85,75,50), "RuinSeverity" = c(0.3,0.35,0.4,.8))
+SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.35,1,1.8,4), "NoMort" = c(95,85,75,50))
+ProbPest <- 1/50 ## annual probability of an outbreak for a species
 
 minAccept <- 0.01 ##min acceptable weight in porfolio - if lower, will remove and re-optimize
 
@@ -346,4 +398,45 @@ ggplot(simNumTree, aes(x = variable, y = value))+
   labs(x = "Portfolio Choice", y = "# of Trees")+
   ggtitle(BGC)
 
-    
+
+##investigate multiple GCM runs
+tic()
+tempclm <- climatebc_mult(inputFile = "ClimBCTest.csv",vip = 1,ysm = "YSM",period = "ACCESS1-0_rcp85_2025.gcm")
+toc()
+
+fname <- "./TimeSeries/PemSamplePts_CanESM2_RCP45_r"
+dat <- foreach(it = 1:5, .combine = rbind) %do%{
+  temp <- fread(paste0(fname,it,"1i1p1_2020-2100MSY.csv"))
+  temp[,ModRun := it]
+  temp
+}
+
+temp <- data.table(Year = 2020:2100, Chunk = c(rep(1:8, each = 10),8))
+# dat3[temp, Cunk := i.Chunk, on = "Year"]
+# statMean <- dat3[,lapply(.SD, mean),by = .(Cunk,ModRun), .SDcols = -"Year"]
+# statMean[,Stat := "Mean"]
+# statVar <- dat3[,lapply(.SD, var),by = .(Cunk,ModRun), .SDcols = -"Year"]
+# statVar[,Stat := "Var"]
+# statByRun <- rbind(statMean,statVar)
+# fwrite(statByRun,"TenYearStatsByRun.csv")
+# 
+# statMean2 <- dat3[,lapply(.SD, mean),by = .(Cunk), .SDcols = -c("Year","ModRun")]
+# statMean2[,Stat := "Mean"]
+# statVar2 <- dat3[,lapply(.SD, var),by = .(Cunk), .SDcols = -c("Year","ModRun")]
+# statVar2[,Stat := "Var"]
+# statCombined2 <- rbind(statMean2,statVar2)
+# fwrite(statCombined2,"TenYearStats.csv")
+# 
+# dat3[,Cunk := as.factor(Cunk)]
+# ggplot(dat3, aes(x = Cunk, y = CMD, col = ModRun))+
+#   geom_boxplot()
+
+dat3 <- dat[,.(Year,ModRun,ID2,CMD,DD5,Tmin_wt,MCMT,EXT,MSP)]
+dat3[temp, Chunk := i.Chunk, on = "Year"]
+dat3[,ModRun := as.factor(ModRun)]
+dat3[,Chunk := as.factor(Chunk)]
+datLong <- melt(dat3, id.vars = c("Chunk","Year","ModRun","ID2"), value.name = "Value",variable.name = "ClimVar")
+
+ggplot(datLong, aes(x = Chunk, y = Value, col = ModRun))+
+  geom_boxplot()+
+  facet_wrap(.~ClimVar, scales = "free_y")
