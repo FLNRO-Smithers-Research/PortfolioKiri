@@ -52,53 +52,6 @@ Edatope <- fread("./InputsGit/Edatopic_v11_20.csv",data.table = T)
 rawDat <- fread(paste0(cloud_dir,inputDatName),data.table = T)
 CCISSPred <- CCISS_Spp(Y1 = rawDat,BGCmodel = BGCmodel,E1 = as.data.table(Edatope))
 
-###model climate variability
-dat2 <- rawDat[ID1 == 75,]
-dat2[,c("GCM","Scenario","FuturePeriod") := tstrsplit(Year, "_")]
-dat2 <- dat2[,.(GCM,FuturePeriod,Scenario,CMD,Tmin_sp,Tmin_sm,Tmax_sp,Tmax_sm)]
-dat2[,FuturePeriod := as.numeric(gsub(".gcm","",FuturePeriod))]
-dat2 <- dat2[,lapply(.SD,mean), by = .(FuturePeriod), .SDcols = -c("GCM","Scenario")]
-
-annDat <- fread("PortPoints_Quesnel_1960-2019MSY.csv")
-ann2 <- annDat[ID2 == "SBSmw",.(Year,ID1,CMD,Tmin_sp,Tmax_sm)]
-
-hist(ann2$CMD)
-library(fitdistrplus)
-f1 <- fitdist(ann2$CMD, "norm")
-denscomp(f1)
-
-climParams <- list()
-for(i in c("CMD","Tmin_sp","Tmax_sm")){
-  f1 <- fitdist(ann2[[i]], "norm")
-  climParams[[i]] <- f1$estimate
-}
-
-##tmin
-dat <- data.table(Year = c(2000,2025,2055,2085),Mean = c(climParams$Tmax_sm[1],dat2$Tmax_sm))
-s <- approx(dat$Year, dat$Mean, n = 101) ##Smooth SI
-res <- numeric()
-for(i in 1:100){
-  res[i] <- rnorm(1,mean = s$y[i],sd = climParams$Tmax_sm[2])
-}
-simRes <- data.table(Year = 2001:2100, Value = res)
-
-temp <- SuitTable[Suitability == 1 & Spp == "Fd",]
-sppUnits <- unique(temp$BGC)
-
-library(RPostgreSQL)
-drv <- dbDriver("PostgreSQL")
-con <- dbConnect(drv, user = "postgres", password = "Kiriliny41", host = "localhost", 
-                 port = 5432, dbname = "bgc_climate_data")
-
-climSum <- dbGetQuery(con, paste0("select bgc,period,var,cmd,tmin_sp,tmax_sm from climsum_curr_v12 where bgc in ('"
-                                  ,paste(sppUnits,collapse = "','"),"') and period = '1991 - 2019'"))
-climSum <- as.data.table(climSum)
-climSum2 <- climSum[,.(CMDMin = min(cmd), CMDMax = max(cmd),Tlow = min(tmin_sp),Thigh = max(tmax_sm)), by = .(var)]
-
-ggplot(data = simRes, aes(x = Year, y = Value))+
-  geom_line()+
-  geom_hline(yintercept = climSum2$Thigh[1], col = "red")
-
 ###rename and cleanup
 SSPredOrig <- as.data.table(CCISSPred[[1]])
 SSPredOrig[,allOverlap := NULL]
@@ -254,6 +207,87 @@ SSPredAll <- SSPredBGC[SSPredBGC$SSCurrent == selectBGC,]
 SiteList <- unique(SSPredAll$SiteNo)
 #SiteList <- rep(SiteList, each = round(15/length(SiteList)))
 SSPredAll <- SSPredAll[SSPredAll$SiteNo %in% SiteList & !is.na(SSPredAll$SSprob),]
+
+#################################
+###model climate variability
+##summarise by fp to get mean
+dat2 <- rawDat[ID2 == BGC,]
+dat2[,c("GCM","Scenario","FuturePeriod") := tstrsplit(Year, "_")]
+dat2 <- dat2[,.(GCM,FuturePeriod,Scenario,ID1,CMD,Tmin_sp,Tmin_sm,Tmax_sp,Tmax_sm)]
+dat2[,FuturePeriod := as.numeric(gsub(".gcm","",FuturePeriod))]
+dat2 <- dat2[,lapply(.SD,mean), by = .(ID1,FuturePeriod), .SDcols = -c("GCM","Scenario")]
+
+##annual data to get variance - could get from summaries?
+# annDat <- fread("PortPoints_Quesnel_1960-2019MSY.csv")
+# ann2 <- annDat[ID2 == "SBSmw",.(Year,ID1,CMD,Tmin_sp,Tmax_sm)]
+# library(fitdistrplus)
+# ##fit normal distribution
+# f1 <- fitdist(ann2$CMD, "norm")
+# denscomp(f1)
+
+library(RPostgreSQL)
+drv <- dbDriver("PostgreSQL")
+con <- dbConnect(drv, user = "postgres", password = "Kiriliny41", host = "localhost", 
+                 port = 5432, dbname = "bgc_climate_data") ##connect to climate summaries
+climVar <- dbGetQuery(con, paste0("select bgc,period,var,cmd,tmin_sp,tmax_sm from climsum_curr_v12 where bgc in ('"
+                                  ,BGC,"') and period = '1991 - 2019' and var in ('std.dev.Ann','mean')"))
+climVar <- as.data.table(climVar)
+setnames(climVar, old = c("cmd","tmin_sp","tmax_sm"), new = c("CMD","Tmin_sp","Tmax_sm"))
+##get variance estimate for each climate variable
+climParams <- list()
+simResults <- data.table()
+datSite <- dat2[ID1 == 31,]
+for(cvar in c("CMD","Tmin_sp","Tmax_sm")){
+  #f1 <- fitdist(ann2[[cvar]], "norm")
+  params <- climVar[[cvar]]
+  climParams[[cvar]] <- params
+  
+  ##table of means by period
+  dat <- data.table(Year = c(2000,2025,2055,2085),Mean = c(params[1],datSite[[cvar]]))
+  s <- approx(dat$Year, dat$Mean, n = 101) ##smooth
+  
+  ##simulate using mean and variance
+  res <- numeric()
+  for(i in 1:100){
+    res[i] <- rnorm(1,mean = s$y[i],sd = params[2])
+  }
+  temp <- data.table(Year = 2001:2100, Value = res)
+  temp[,Var := cvar]
+  simResults <- rbind(simResults,temp,fill = T)
+}
+
+##tmin
+
+##find limits for specie
+
+temp <- SuitTable[Suitability == 1 & Spp == "Sx",] ##what units is Fd 1?
+sppUnits <- unique(temp$BGC)
+
+climSum <- dbGetQuery(con, paste0("select bgc,period,var,cmd,tmin_sp,tmax_sm from climsum_curr_v12 where bgc in ('"
+                                  ,paste(sppUnits,collapse = "','"),"') and period = '1991 - 2019'"))
+climSum <- as.data.table(climSum)
+climSum2 <- climSum[,.(CMDMin = min(cmd), CMDMax = max(cmd),Tlow = min(tmin_sp),Thigh = max(tmax_sm)), by = .(var)]
+climSum2 <- climSum2[var == "mean",]
+
+ggcmd <- ggplot(data = simResults[Var == "CMD",], aes(x = Year, y = Value))+
+  geom_line()+
+  geom_hline(yintercept = climSum2$CMDMax, col = "red")+
+  geom_hline(yintercept = climSum2$CMDMin, col = "blue")+
+  ggtitle("CMD")
+
+ggtmin <- ggplot(data = simResults[Var == "Tmin_sp",], aes(x = Year, y = Value))+
+  geom_line()+
+  geom_hline(yintercept = climSum2$Tlow, col = "blue")+
+  ggtitle("Tmin_sp")
+
+ggtmax <- ggplot(data = simResults[Var == "Tmax_sm",], aes(x = Year, y = Value))+
+  geom_line()+
+  geom_hline(yintercept = climSum2$Thigh, col = "red")+
+  ggtitle("Tmax_sm")
+
+library(gridExtra)
+grid.arrange(ggcmd,ggtmin,ggtmax, ncol = 3)
+
 
 SL <- SiteList
 allSitesSpp <- foreach(SNum = SL, .combine = rbind, 
