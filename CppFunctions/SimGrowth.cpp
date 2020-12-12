@@ -44,7 +44,7 @@ NumericVector SimGrowth_Volume(DataFrame DF, double ProbOutbreak){
     height = sum(Growth[Rcpp::Range(0,i)]);
     Returns[i] = nTrees*height;
     if(Rcpp::runif(1,0,1)[0] <= ProbOutbreak){//pest outbreak
-      percentRuin = rgamma(1, Ruin[i], 0.1)[0];
+      percentRuin = rgamma(1, Ruin[i], 0.07)[0];
       if(percentRuin > 1){
         percentRuin = 1;
       }
