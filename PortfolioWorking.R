@@ -262,16 +262,23 @@ for(cvar in c("CMD","Tmin_sp","Tmax_sm")){
 
 ##tmin
 
-##find limits for specie
+##find limits for each species
 
-temp <- SuitTable[Suitability == 1 & Spp == "Sx",] ##what units is Fd 1?
-sppUnits <- unique(temp$BGC)
+sppLimits <- foreach(spp = Trees, .combine = rbind) %do% {
+  temp <- SuitTable[Suitability == 1 & Spp == spp,] ##what units is Fd 1?
+  sppUnits <- unique(temp$BGC)
+  
+  climSum <- dbGetQuery(con, paste0("select bgc,period,var,cmd,tmin_sp,tmax_sm from climsum_curr_v12 where bgc in ('"
+                                    ,paste(sppUnits,collapse = "','"),"') and period = '1991 - 2019'"))
+  climSum <- as.data.table(climSum)
+  climSum2 <- climSum[,.(CMDMin = min(cmd), CMDMax = max(cmd),Tlow = min(tmin_sp),Thigh = max(tmax_sm)), by = .(var)]
+  #climSum2 <- climSum2[var == "mean",]
+  climSum3 <- data.table(CMDMin = climSum2[var == "10%",CMDMin],CMDMax = climSum2[var == "90%",CMDMax],
+                         Tlow = climSum2[var == "10%",Tlow],Thigh = climSum2[var == "90%",Thigh])
+  climSum3[,Spp := spp]
+  climSum3
+}
 
-climSum <- dbGetQuery(con, paste0("select bgc,period,var,cmd,tmin_sp,tmax_sm from climsum_curr_v12 where bgc in ('"
-                                  ,paste(sppUnits,collapse = "','"),"') and period = '1991 - 2019'"))
-climSum <- as.data.table(climSum)
-climSum2 <- climSum[,.(CMDMin = min(cmd), CMDMax = max(cmd),Tlow = min(tmin_sp),Thigh = max(tmax_sm)), by = .(var)]
-climSum2 <- climSum2[var == "mean",]
 
 ggcmd <- ggplot(data = simResults[Var == "CMD",], aes(x = Year, y = Value))+
   geom_line()+
