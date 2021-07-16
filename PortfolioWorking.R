@@ -28,14 +28,11 @@ source_python("./PythonFns/PortfolioOptimisation.py")
 source("CCISS_Fns.R")
 
 ###load data
-inputDatName <- "PortPoints_Quesnel_90 GCMsMSY.csv"
-SuitTable <- fread("InputsGit/Feasibility_v11_21.csv") ##tree spp suitability
+SuitTable <- fread("~/CommonTables/Feasibility_v12_7.csv") ##tree spp suitability
+SuitTable[,Confirmed := NULL]
+SuitTable[,SppVar := substr(SppVar,1,2)]
 SuitTable <- unique(SuitTable)
-SuitNew <- fread("InputsGit/Feas_toAdd.csv")
-
-colnames(SuitTable)[2:4] <- c("SS_NoSpace","Spp","Suitability")
-SuitTable <- SuitTable[,c("BGC","SS_NoSpace","Spp","Suitability")]
-SuitTable <- rbind(SuitTable, SuitNew)
+setnames(SuitTable,c("BGC","SS_NoSpace","Spp","Suitability"))
 
 SIBEC <- fread("InputsGit/PredSI_May2020.csv") 
 SIBECnew <- fread("InputsGit/SI_to_add.csv")
@@ -43,21 +40,23 @@ SIBEC <- rbind(SIBEC, SIBECnew)
 ###import SI data (currently from BART)
 SIBEC <- SIBEC[,c("SS_NoSpace","Spp","SIPred")] %>% set_colnames(c("SS_NoSpace","TreeSpp","MeanPlotSiteIndex"))
 
-eda <- fread("InputsGit/Edatopic_v11_20.csv")
-eda <- unique(eda[is.na(Special),.(BGC,SS_NoSpace, Edatopic)])
+eda <- fread("~/CommonTables/Edatopic_v12_5.csv")
+eda <- unique(eda[,.(BGC,SS_NoSpace, Edatopic)])
 
-###run cciss predict
-load(paste0(cloud_dir, "WNA_Subzone_17Var_extratree.Rdata"))##BGC model
-Edatope <- fread("./InputsGit/Edatopic_v11_20.csv",data.table = T)
-rawDat <- fread(paste0(cloud_dir,inputDatName),data.table = T)
-CCISSPred <- CCISS_Spp(Y1 = rawDat,BGCmodel = BGCmodel,E1 = as.data.table(Edatope))
-
+## get cciss data
+siteids <- c(6487982,6484391,6484900,6485410,6485920)
+library(RPostgreSQL)
+drv <- dbDriver("PostgreSQL")
+con <- dbConnect(drv, user = "postgres", password = "postgres", host = "138.197.168.220", 
+                 port = 5432, dbname = "cciss")
+library(ccissdev)
+bgcDat <- dbGetCCISS(con,siteids,avg = F, scn = "ssp370")
+sspreds <- edatopicOverlap(bgcDat,Edatope = E1)
 ###rename and cleanup
-SSPredOrig <- as.data.table(CCISSPred[[1]])
+SSPredOrig <- sspreds
 SSPredOrig[,allOverlap := NULL]
-setnames(SSPredOrig, old = c("BGC","SS_NoSpace","SS.pred"), 
-         new = c("MergedBGC","SSCurrent","SS_NoSpace"))
-SSPredOrig <- SSPredOrig[,.(MergedBGC,SS_NoSpace,SSratio,SSprob,SSCurrent,FuturePeriod,SiteNo)]
+setnames(SSPredOrig, old = c("BGC","SiteRef"), new = c("MergedBGC","SiteNo"))
+SSPredOrig <- SSPredOrig[,.(MergedBGC,SS_NoSpace,SSratio,SSprob,SS.pred,FuturePeriod,SiteNo)]
 
 cleanData <- function(SSPredAll,SIBEC,SuitTable,SNum,Trees,timePer,selectBGC){
   SSPred <- SSPredAll[SiteNo == SNum,] ###subset
@@ -65,15 +64,15 @@ cleanData <- function(SSPredAll,SIBEC,SuitTable,SNum,Trees,timePer,selectBGC){
   ##Merge SIBEC data
   SIBEC <- SIBEC[TreeSpp %in% Trees,]
   SSPred <- SSPred[SSPred$FuturePeriod %in% timePer,]
-  SSPred <- SSPred[,.(FuturePeriod, SSCurrent,SS_NoSpace, SSprob)]
-  SSPred <- merge(SSPred, SIBEC, by = "SS_NoSpace", all.x = TRUE)
-  
+  SSPred <- SSPred[,.(FuturePeriod, SS_NoSpace,SS.pred, SSprob)]
+  SSPred <- SIBEC[SSPred, on = c(SS_NoSpace = "SS.pred")]
+  setnames(SSPred, old = c("SS_NoSpace","i.SS_NoSpace"), new = c("SS.pred","SS_NoSpace"))
   
   ###Add rows for species with missing SI - mostly US units here
   add <- foreach(Year = unique(SSPred$FuturePeriod), .combine = rbind) %do%{
     byYear <- SSPred[SSPred$FuturePeriod == Year,]
-    foreach(SS = unique(byYear$SS_NoSpace), .combine = rbind) %do%{
-      bySS <- byYear[byYear$SS_NoSpace == SS,]
+    foreach(SS = unique(byYear$SS.pred), .combine = rbind) %do%{
+      bySS <- byYear[byYear$SS.pred == SS,]
       missing <- Trees[!Trees %in% bySS$TreeSpp]
       new <- bySS[rep(1,length(missing)),]
       new$TreeSpp <- missing
@@ -92,71 +91,68 @@ cleanData <- function(SSPredAll,SIBEC,SuitTable,SNum,Trees,timePer,selectBGC){
   setnames(SSPred,old = "TreeSpp", new = "Spp")
   
   ##Add suitability
-  SSPred <- merge(SSPred, SuitTable, by = c("SS_NoSpace","Spp"), all.x = TRUE)
+  SSPred[SuitTable, Suitability := i.Suitability, on = c(SS.pred = "SS_NoSpace", "Spp")]
   SSPred$Suitability[is.na(SSPred$Suitability)] <- 5
   
-  temp <- SIBEC[SIBEC$SS_NoSpace == selectBGC,]
+  temp <- SIBEC[SS_NoSpace == selectBGC,]
   if(nrow(temp) == 0){
     return(NULL)
   }
-  ###Create current data
-  current <- temp %>% 
-    merge(SuitTable, by.x = c("TreeSpp","SS_NoSpace"), by.y = c("Spp","SS_NoSpace"), all.x = TRUE) %>%
-    unique()
-  
-  ###check that there aren't errors in the table
-  temp <- aggregate(SS_NoSpace ~ TreeSpp, current, FUN = length)
-  if(any(temp$SS_NoSpace > 1)){
-    stop("There are partial duplicates in the suitablity table. Please fix them. :)")
-  }
-  
-  current <- data.frame(Spp = current$TreeSpp, FuturePeriod = 2000, 
-                        MeanSI = current$MeanPlotSiteIndex, MeanSuit = current$Suitability)
-  
-  missing <- Trees[!Trees %in% current$Spp]
-  if(length(missing) > 0){
-    new <- current[rep(1,length(missing)),]
-    new$Spp <- missing
-    new$MeanSI <- 10
-    new$MeanSuit <- 5
-    current <- rbind(current, new)
-  }
+  # ###Create current data
+  # current <- temp %>% 
+  #   merge(SuitTable, by.x = c("TreeSpp","SS.pred"), by.y = c("Spp","SS.pred"), all.x = TRUE) %>%
+  #   unique()
+  # 
+  # ###check that there aren't errors in the table
+  # temp <- aggregate(SS.pred ~ TreeSpp, current, FUN = length)
+  # if(any(temp$SS.pred > 1)){
+  #   stop("There are partial duplicates in the suitablity table. Please fix them. :)")
+  # }
+  # 
+  # current <- data.frame(Spp = current$TreeSpp, FuturePeriod = 2000, 
+  #                       MeanSI = current$MeanPlotSiteIndex, MeanSuit = current$Suitability)
+  # 
+  # missing <- Trees[!Trees %in% current$Spp]
+  # if(length(missing) > 0){
+  #   new <- current[rep(1,length(missing)),]
+  #   new$Spp <- missing
+  #   new$MeanSI <- 10
+  #   new$MeanSuit <- 5
+  #   current <- rbind(current, new)
+  # }
   
   ##Summarise data- average SI and Suit weighted by SSProb
   SS.sum <- SSPred[,.(MeanSI = sum(MeanPlotSiteIndex*(SSprob/sum(SSprob))),
                       MeanSuit = round(sum(Suitability*(SSprob/sum(SSprob))), digits = 0)),
                    by = .(Spp,FuturePeriod)]
   
-  SS.sum <- rbind(SS.sum, current)
-  SS.sum <- SS.sum[SS.sum$FuturePeriod %in% timePer,]
+  SS.sum <- SS.sum[FuturePeriod %in% timePer,]
   ###not sure what we were doing here?
-  SS.sum$MeanSI[SS.sum$MeanSuit == 4] <- 5
-  SS.sum$MeanSI[SS.sum$MeanSuit == 5] <- 0
-  SS.sum$MeanSuit[SS.sum$MeanSuit == 5] <- 4
+  SS.sum[MeanSuit == 4, MeanSI := 5]
+  SS.sum[MeanSuit == 5, MeanSI := 0]
+  SS.sum[MeanSuit == 5, MeanSuit := 4]
   SS.sum <- unique(SS.sum)
-  SS.sum <- SS.sum[order(SS.sum$Spp,SS.sum$FuturePeriod),]
-  #SS.sum$MeanSuit[is.na(SS.sum$MeanSuit)] <- 3
+  setorder(SS.sum,Spp,FuturePeriod)
   return(SS.sum)
 }
 
 edatopicSubset <- function(SSPredOrig, eda, pos = "Zonal"){
   if(pos == "Zonal"){
-    SSPredFull <- SSPredOrig[grep("01",SSPredOrig$SSCurrent),]
+    SSPredFull <- SSPredOrig[grep("01",SSPredOrig$SS_NoSpace),]
   }else{
     edaSub <- eda[Edatopic == pos,]
-    SSPredFull <- SSPredOrig[SSCurrent %in% edaSub$SS_NoSpace,]
+    SSPredFull <- SSPredOrig[SS_NoSpace %in% edaSub$SS.pred,]
   }
-  SSPredFull$BGC_analysis <- gsub("/.*","", SSPredFull$SSCurrent)
+  SSPredFull[,BGC_analysis := gsub("/.*","", SS_NoSpace)]
   
-  SSPredFull <- SSPredFull[,c("MergedBGC", "SS_NoSpace", "SSprob", "SSCurrent", 
+  SSPredFull <- SSPredFull[,c("MergedBGC", "SS.pred", "SSprob", "SS_NoSpace", 
                               "FuturePeriod", "SiteNo","BGC_analysis")]
-  
+  return(SSPredFull)
   ##remove cases where not all timeperiods available
-  SSPredFull <- as.data.table(SSPredFull)
-  temp <- SSPredFull[,.(Num = length(unique(FuturePeriod))), by = c("SiteNo","SSCurrent")]
-  temp <- temp[Num == 3,-c("Num")]
-  SSPredFull <- SSPredFull[temp,on = c("SiteNo","SSCurrent")]
-  SSPredFull[,SiteNo := as.numeric(SiteNo)]
+  # temp <- SSPredFull[,.(Num = length(unique(FuturePeriod))), by = c("SiteNo","SS_NoSpace")]
+  # temp <- temp[Num == 6,-c("Num")]
+  # SSPredFull <- SSPredFull[temp,on = c("SiteNo","SS_NoSpace")]
+  # SSPredFull[,SiteNo := as.numeric(SiteNo)]
 }
 
 
@@ -190,27 +186,30 @@ Trees <- myColours$TreeCode
 boundDat <- data.table(Spp = Trees)
 boundDat[,`:=`(minWt = 0, maxWt = 1)]
 
-timePeriods = c(2000,2025,2055)
+unique(SSPredOrig$FuturePeriod)
+
+timePeriods = c(1961,1991,2021,2041,2061)
 returnValue = 0.9
 
 ###subset for zonal or other
 SSPredFull <- edatopicSubset(SSPredOrig,eda,pos = "Zonal")
 
 treeList <- Trees
-nSpp <- length(Trees)
+treeList <- c("Py","Fd","At","Pl","Sx","Bl","Cw","Hw","Pw","Ss","Lw","Ba","Hm","Dr","Mb")
+nSpp <- length(treeList)
 Units <- unique(SSPredFull$BGC_analysis)
 
 ###SELECT BGC
-BGC = Units[2]
+BGC = Units[1]
   
 SSPredBGC <- SSPredFull[BGC_analysis == BGC,-("BGC_analysis")]
-SSList <- unique(SSPredBGC$SSCurrent)
+SSList <- unique(SSPredBGC$SS_NoSpace)
 selectBGC = SSList[1]
-SSPredAll <- SSPredBGC[SSPredBGC$SSCurrent == selectBGC,]
+SSPredAll <- SSPredBGC[SSPredBGC$SS_NoSpace == selectBGC,]
 
 SiteList <- unique(SSPredAll$SiteNo)
 #SiteList <- rep(SiteList, each = round(15/length(SiteList)))
-SSPredAll <- SSPredAll[SSPredAll$SiteNo %in% SiteList & !is.na(SSPredAll$SSprob),]
+SSPredAll <- SSPredAll[SiteNo %in% SiteList & !is.na(SSprob),]
 
 #################################
 ###model climate variability
@@ -231,12 +230,12 @@ dat2 <- dat2[,lapply(.SD,mean), by = .(ID1,FuturePeriod), .SDcols = -c("GCM","Sc
 
 library(RPostgreSQL)
 drv <- dbDriver("PostgreSQL")
-con <- dbConnect(drv, user = "postgres", password = "Kiriliny41", host = "localhost", 
+con <- dbConnect(drv, user = "postgres", password = "postgres", host = "138.197.168.220", 
                  port = 5432, dbname = "bgc_climate_data") ##connect to climate summaries
-climVar <- dbGetQuery(con, paste0("select bgc,period,var,cmd,tmin_sp,tmax_sm from climsum_curr_v12 where bgc in ('"
-                                  ,BGC,"') and period = '1991 - 2019' and var in ('std.dev.Ann','mean')"))
+climVar <- dbGetQuery(con, paste0("select bgc,period,stat,climvar,value from szsum_curr where bgc in ('"
+                                  ,BGC,"') and period = '1991 - 2020' and stat in ('st.dev.Ann','mean') 
+                                  and climvar in ('CMD','Tmin_sp','Tmax_sm')"))
 climVar <- as.data.table(climVar)
-setnames(climVar, old = c("cmd","tmin_sp","tmax_sm"), new = c("CMD","Tmin_sp","Tmax_sm"))
 ##get variance estimate for each climate variable
 climParams <- list()
 simResults <- data.table()
@@ -317,7 +316,7 @@ allSitesSpp <- foreach(SNum = SL, .combine = rbind,
                                    SS.sum$Spp[is.na(SS.sum$MeanSuit)], ": They will be filled with suit = 4")
                            SS.sum$MeanSuit[is.na(SS.sum$MeanSuit)] <- 4
                          }
-                         SS.sum$FuturePeriod <- as.numeric(SS.sum$FuturePeriod)
+                         SS.sum[,FuturePeriod := as.numeric(FuturePeriod)]
                          if(length(timePeriods) == 1){
                            temp <- SS.sum
                            temp$FuturePeriod <- SS.sum$FuturePeriod[1]+85
@@ -325,15 +324,14 @@ allSitesSpp <- foreach(SNum = SL, .combine = rbind,
                          }
                          
                          if(!is.null(SS.sum)){
-                           annualDat <- data.frame("Year" = seq(2000,2100,1))
-                           output <- data.frame("year" = annualDat$Year)
+                           output <- data.table("year" = seq(2000,2100,1))
                            
                            for (k in 1:nSpp){ ##for each tree
-                             DatSpp <- SS.sum[SS.sum$Spp == treeList[k],]
-                             dat <- data.frame("Period" = rescale(as.numeric(DatSpp$FuturePeriod), 
+                             DatSpp <- SS.sum[Spp == treeList[k],]
+                             dat <- data.table("Period" = rescale(as.numeric(DatSpp$FuturePeriod), 
                                                                   to = c(2000,2085)), 
-                                               "SIBEC" = DatSpp$MeanSI, "Suit" = DatSpp$MeanSuit)
-                             dat$SIBEC <- dat$SIBEC/50 ##for mean annual increment
+                                               "SIBEC" = DatSpp$MeanSI/50, "Suit" = DatSpp$MeanSuit)
+ 
                              dat <- merge(dat, SuitProb, by = "Suit")
                              s <- approx(dat$Period, dat$SIBEC, n = 101) ##Smooth SI
                              p <- approx(dat$Period, dat$ProbDead, n = 101) ###Smooth Prob Dead
@@ -341,7 +339,7 @@ allSitesSpp <- foreach(SNum = SL, .combine = rbind,
                              ##r <- approx(dat$Period, dat$RuinSeverity, n = 101)
                              
                              ###data frame of annual data
-                             annualDat <- data.frame("Year" = seq(2000,2100,1), "Growth" = s[["y"]], 
+                             annualDat <- data.table("Year" = seq(2000,2100,1), "Growth" = s[["y"]], 
                                                      "MeanDead" = p[["y"]], "NoMort" = m[["y"]]) ##create working data
                              
                              Returns <- simGrowthCpp(DF = annualDat)
@@ -356,11 +354,10 @@ allSitesSpp <- foreach(SNum = SL, .combine = rbind,
                            
                            ####Portfolio#######################################
                            returns <- output
-                           rownames(returns) <- returns[,1]
-                           returns <- returns[,-1]
+                           returns[,Year := NULL]
                            ###only include species with mean return > 1 in portfolio
                            use <- colnames(returns)[colMeans(returns) > 1] ###should probably be higher
-                           returns <- returns[,use]
+                           returns <- returns[,..use]
                            sigma2 <- as.data.frame(cor(returns)) ###to create cov mat from returns
                            
                            ef <- ef_weights_v2(returns, sigma2, boundDat,minAccept) 
@@ -409,7 +406,7 @@ allSitesSpp <- foreach(SNum = SL, .combine = rbind,
                            
                            #simVolume <- simVolume[Stat == "nTree",]
                            simVolume <- melt(simVolume, id.vars = c("it","Stat"))
-                           #simVolume <- simVolume[value < 8000,] ##something weird happens occasionally - need to sort this out
+                           # simVolume <- simVolume[value < 8000,] ##something weird happens occasionally - need to sort this out
                            # ggplot(simVolume, aes(x = variable, y = value))+
                            #   geom_violin()+
                            #   labs(x = "Portfolio Choice", y = "Volume of Stand")
