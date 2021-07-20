@@ -98,29 +98,7 @@ cleanData <- function(SSPredAll,SIBEC,SuitTable,SNum,Trees,timePer,selectBGC){
   if(nrow(temp) == 0){
     return(NULL)
   }
-  # ###Create current data
-  # current <- temp %>% 
-  #   merge(SuitTable, by.x = c("TreeSpp","SS.pred"), by.y = c("Spp","SS.pred"), all.x = TRUE) %>%
-  #   unique()
-  # 
-  # ###check that there aren't errors in the table
-  # temp <- aggregate(SS.pred ~ TreeSpp, current, FUN = length)
-  # if(any(temp$SS.pred > 1)){
-  #   stop("There are partial duplicates in the suitablity table. Please fix them. :)")
-  # }
-  # 
-  # current <- data.frame(Spp = current$TreeSpp, FuturePeriod = 2000, 
-  #                       MeanSI = current$MeanPlotSiteIndex, MeanSuit = current$Suitability)
-  # 
-  # missing <- Trees[!Trees %in% current$Spp]
-  # if(length(missing) > 0){
-  #   new <- current[rep(1,length(missing)),]
-  #   new$Spp <- missing
-  #   new$MeanSI <- 10
-  #   new$MeanSuit <- 5
-  #   current <- rbind(current, new)
-  # }
-  
+
   ##Summarise data- average SI and Suit weighted by SSProb
   SS.sum <- SSPred[,.(MeanSI = sum(MeanPlotSiteIndex*(SSprob/sum(SSprob))),
                       MeanSuit = round(sum(Suitability*(SSprob/sum(SSprob))), digits = 0)),
@@ -164,8 +142,8 @@ SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.1,0.2,0.3, 1), "NoM
 ProbPest <- 1/100 ## annual probability of an outbreak for a species
 
 #SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.1,0.2,0.3, 1), "NoMort" = c(95,85,75,50), "RuinSeverity" = c(0.3,0.35,0.4,.8))
-SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.35,1,1.8,4), "NoMort" = c(95,85,75,50))
-ProbPest <- 1/50 ## annual probability of an outbreak for a species
+SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.1,0.5,1,4), "NoMort" = c(95,85,75,50))
+ProbPest <- 1/1000 ## annual probability of an outbreak for a species
 
 minAccept <- 0.01 ##min acceptable weight in porfolio - if lower, will remove and re-optimize
 
@@ -173,14 +151,15 @@ cols <- fread("./InputsGit/PortfolioSppColours.csv")
 cols <- cols[HexColour != "",]
 myPal <- cols$HexColour
 names(myPal) <- cols$TreeCode
-Trees <- unique(SIBEC$TreeSpp)
+Trees <- c("Py","Fd","At","Pl","Sx","Bl","Cw","Hw","Pw","Ss","Lw","Ba","Hm","Dr","Mb")
+#Trees <- unique(SIBEC$TreeSpp)
 myColours <- data.table(TreeCode = Trees)
 myColours <- cols[myColours, on = "TreeCode"]
 myColours <- myColours[!is.na(HexColour),]
 pal <- myColours$HexColour
 names(pal) <- myColours$TreeCode
 colScale <- scale_fill_manual(name = "variable", values = pal)
-Trees <- myColours$TreeCode
+#Trees <- myColours$TreeCode
 
 ##set min and max weights for each species
 boundDat <- data.table(Spp = Trees)
@@ -195,7 +174,7 @@ returnValue = 0.9
 SSPredFull <- edatopicSubset(SSPredOrig,eda,pos = "Zonal")
 
 treeList <- Trees
-treeList <- c("Py","Fd","At","Pl","Sx","Bl","Cw","Hw","Pw","Ss","Lw","Ba","Hm","Dr","Mb")
+#treeList <- c("Py","Fd","At","Pl","Sx","Bl","Cw","Hw","Pw","Ss","Lw","Ba","Hm","Dr","Mb")
 nSpp <- length(treeList)
 Units <- unique(SSPredFull$BGC_analysis)
 
@@ -214,11 +193,11 @@ SSPredAll <- SSPredAll[SiteNo %in% SiteList & !is.na(SSprob),]
 #################################
 ###model climate variability
 ##summarise by fp to get mean
-dat2 <- rawDat[ID2 == BGC,]
-dat2[,c("GCM","Scenario","FuturePeriod") := tstrsplit(Year, "_")]
-dat2 <- dat2[,.(GCM,FuturePeriod,Scenario,ID1,CMD,Tmin_sp,Tmin_sm,Tmax_sp,Tmax_sm)]
-dat2[,FuturePeriod := as.numeric(gsub(".gcm","",FuturePeriod))]
-dat2 <- dat2[,lapply(.SD,mean), by = .(ID1,FuturePeriod), .SDcols = -c("GCM","Scenario")]
+# dat2 <- rawDat[ID2 == BGC,]
+# dat2[,c("GCM","Scenario","FuturePeriod") := tstrsplit(Year, "_")]
+# dat2 <- dat2[,.(GCM,FuturePeriod,Scenario,ID1,CMD,Tmin_sp,Tmin_sm,Tmax_sp,Tmax_sm)]
+# dat2[,FuturePeriod := as.numeric(gsub(".gcm","",FuturePeriod))]
+# dat2 <- dat2[,lapply(.SD,mean), by = .(ID1,FuturePeriod), .SDcols = -c("GCM","Scenario")]
 
 ##annual data to get variance - could get from summaries?
 # annDat <- fread("PortPoints_Quesnel_1960-2019MSY.csv")
@@ -232,32 +211,46 @@ library(RPostgreSQL)
 drv <- dbDriver("PostgreSQL")
 con <- dbConnect(drv, user = "postgres", password = "postgres", host = "138.197.168.220", 
                  port = 5432, dbname = "bgc_climate_data") ##connect to climate summaries
-climVar <- dbGetQuery(con, paste0("select bgc,period,stat,climvar,value from szsum_curr where bgc in ('"
-                                  ,BGC,"') and period = '1991 - 2020' and stat in ('st.dev.Ann','mean') 
-                                  and climvar in ('CMD','Tmin_sp','Tmax_sm')"))
-climVar <- as.data.table(climVar)
+dbDisconnect(con)
+
+
+climVarFut <- dbGetQuery(con, paste0("select bgc,period,stat,climvar,value from szsum_fut where bgc in ('"
+                                  ,BGC,"') and period in ('2021-2040','2041-2060','2061-2080') 
+                                  and stat = 'mean'
+                                  and climvar in ('CMD','Tmin_sp','Tmax_sm') and scenario = 'ssp370'"))
+climVarFut <- as.data.table(climVarFut)
+
+climVarCurr <- dbGetQuery(con, paste0("select bgc,period,stat,climvar,value from szsum_curr where bgc in ('"
+                                     ,BGC,"') and period in ('1991 - 2020') 
+                                  and stat in ('st.dev.Ann','mean') 
+                                  and climvar in ('CMD','Tmin_sp','Tmax_sm')")) %>% as.data.table()
+climVarCurr[stat == 'st.dev.Ann',stat := "stdev"]
+climVarSD <- climVarCurr[stat == "stdev",]
+climVarCurr <- climVarCurr[stat != "stdev",]
+climVar <- rbind(climVarCurr,climVarFut)
+climVar[,period := as.numeric(substr(period,1,4))]
+
 ##get variance estimate for each climate variable
 climParams <- list()
 simResults <- data.table()
-datSite <- dat2[ID1 == 31,]
+
 for(cvar in c("CMD","Tmin_sp","Tmax_sm")){
-  #f1 <- fitdist(ann2[[cvar]], "norm")
-  params <- climVar[[cvar]]
-  climParams[[cvar]] <- params
-  
+  climSub <- climVar[climvar == cvar,.(value = mean(value)), by = .(period)]
+  climSD <- climVarSD[climvar == cvar,value]
   ##table of means by period
-  dat <- data.table(Year = c(2000,2025,2055,2085),Mean = c(params[1],datSite[[cvar]]))
+  dat <- data.table(Year = c(2000,2025,2055,2085),Mean = climSub$value)
   s <- approx(dat$Year, dat$Mean, n = 101) ##smooth
   
   ##simulate using mean and variance
   res <- numeric()
-  for(i in 1:100){
-    res[i] <- rnorm(1,mean = s$y[i],sd = params[2])
+  for(i in 1:101){
+    res[i] <- rnorm(1,mean = s$y[i],sd = climSD)
   }
-  temp <- data.table(Year = 2001:2100, Value = res)
+  temp <- data.table(Year = 2000:2100, Value = res)
   temp[,Var := cvar]
   simResults <- rbind(simResults,temp,fill = T)
 }
+simResults <- dcast(simResults,Year ~ Var, value.var = "Value")
 
 ##tmin
 
@@ -267,36 +260,44 @@ sppLimits <- foreach(spp = Trees, .combine = rbind) %do% {
   temp <- SuitTable[Suitability == 1 & Spp == spp,] ##what units is Fd 1?
   sppUnits <- unique(temp$BGC)
   
-  climSum <- dbGetQuery(con, paste0("select bgc,period,var,cmd,tmin_sp,tmax_sm from climsum_curr_v12 where bgc in ('"
-                                    ,paste(sppUnits,collapse = "','"),"') and period = '1991 - 2019'"))
+  climSum <- dbGetQuery(con, paste0("select bgc,period,stat,climvar,value from szsum_curr where bgc in ('"
+                                    ,paste(sppUnits,collapse = "','"),"') and period = '1991 - 2020' 
+                                    and climvar in ('CMD','Tmin_sp','Tmax_sm')"))
   climSum <- as.data.table(climSum)
-  climSum2 <- climSum[,.(CMDMin = min(cmd), CMDMax = max(cmd),Tlow = min(tmin_sp),Thigh = max(tmax_sm)), by = .(var)]
+  climSum2 <- climSum[,.(Min = min(value),Max = max(value)),
+                      by = .(stat,climvar)]
   #climSum2 <- climSum2[var == "mean",]
-  climSum3 <- data.table(CMDMin = climSum2[var == "10%",CMDMin],CMDMax = climSum2[var == "90%",CMDMax],
-                         Tlow = climSum2[var == "10%",Tlow],Thigh = climSum2[var == "90%",Thigh])
+  # climSum3 <- data.table(CMDMin = climSum2[stat == "10%" & climvar == "CMD",Min],
+  #                        CMDMax = climSum2[stat == "90%" & climvar == "CMD",Max],
+  #                        Tlow = climSum2[stat == "10%" & climvar == "Tmin_sp",Min],
+  #                        Thigh = climSum2[stat == "90%" & climvar == "Tmax_sm",Max])
+  climSum3 <- data.table(CMDMin = climSum2[stat == "mean" & climvar == "CMD",Min],
+                         CMDMax = climSum2[stat == "mean" & climvar == "CMD",Max],
+                         Tlow = climSum2[stat == "mean" & climvar == "Tmin_sp",Min],
+                         Thigh = climSum2[stat == "mean" & climvar == "Tmax_sm",Max])
   climSum3[,Spp := spp]
   climSum3
 }
 
 
-ggcmd <- ggplot(data = simResults[Var == "CMD",], aes(x = Year, y = Value))+
-  geom_line()+
-  geom_hline(yintercept = climSum2$CMDMax, col = "red")+
-  geom_hline(yintercept = climSum2$CMDMin, col = "blue")+
-  ggtitle("CMD")
-
-ggtmin <- ggplot(data = simResults[Var == "Tmin_sp",], aes(x = Year, y = Value))+
-  geom_line()+
-  geom_hline(yintercept = climSum2$Tlow, col = "blue")+
-  ggtitle("Tmin_sp")
-
-ggtmax <- ggplot(data = simResults[Var == "Tmax_sm",], aes(x = Year, y = Value))+
-  geom_line()+
-  geom_hline(yintercept = climSum2$Thigh, col = "red")+
-  ggtitle("Tmax_sm")
-
-library(gridExtra)
-grid.arrange(ggcmd,ggtmin,ggtmax, ncol = 3)
+# ggcmd <- ggplot(data = simResults[Var == "CMD",], aes(x = Year, y = Value))+
+#   geom_line()+
+#   geom_hline(yintercept = climSum2$CMDMax, col = "red")+
+#   geom_hline(yintercept = climSum2$CMDMin, col = "blue")+
+#   ggtitle("CMD")
+# 
+# ggtmin <- ggplot(data = simResults[Var == "Tmin_sp",], aes(x = Year, y = Value))+
+#   geom_line()+
+#   geom_hline(yintercept = climSum2$Tlow, col = "blue")+
+#   ggtitle("Tmin_sp")
+# 
+# ggtmax <- ggplot(data = simResults[Var == "Tmax_sm",], aes(x = Year, y = Value))+
+#   geom_line()+
+#   geom_hline(yintercept = climSum2$Thigh, col = "red")+
+#   ggtitle("Tmax_sm")
+# 
+# library(gridExtra)
+# grid.arrange(ggcmd,ggtmin,ggtmax, ncol = 3)
 
 
 SL <- SiteList
@@ -336,13 +337,16 @@ allSitesSpp <- foreach(SNum = SL, .combine = rbind,
                              s <- approx(dat$Period, dat$SIBEC, n = 101) ##Smooth SI
                              p <- approx(dat$Period, dat$ProbDead, n = 101) ###Smooth Prob Dead
                              m <- approx(dat$Period, dat$NoMort, n = 101) ##Smooth No Mort
+                             r <- approx(dat$Period, dat$Suit, n = 101)
                              ##r <- approx(dat$Period, dat$RuinSeverity, n = 101)
                              
                              ###data frame of annual data
-                             annualDat <- data.table("Year" = seq(2000,2100,1), "Growth" = s[["y"]], 
-                                                     "MeanDead" = p[["y"]], "NoMort" = m[["y"]]) ##create working data
-                             
-                             Returns <- simGrowthCpp(DF = annualDat)
+                             annualDat <- data.table("Growth" = s[["y"]], "MeanDead" = p[["y"]], "NoMort" = m[["y"]], "Suit" = r[["y"]]) ##create working data
+                             annualDat <- cbind(simResults,annualDat)
+                             limits <- sppLimits[Spp == treeList[k],]
+                             Returns <- SimGrowth_v2(DF = annualDat,ProbPest = 0.005,
+                                                     cmdMin = limits[[1]],cmdMax = limits[[2]],
+                                                     tempMin = limits[[3]],tempMax = limits[[4]])
                              tmpR <- c(0,Returns)
                              assets <- Returns - tmpR[-length(tmpR)]
                              temp <- data.frame(Spp = rep(treeList[k],101), 
@@ -393,7 +397,7 @@ allSitesSpp <- foreach(SNum = SL, .combine = rbind,
                                ###data frame of annual data
                                annualDat <- data.frame("Year" = seq(2000,2100,1), "Growth" = s[["y"]], 
                                                        "MeanDead" = p[["y"]], "NoMort" = m[["y"]], "Suit" = r[["y"]]) ##create working data
-                               simRes <- SimGrowth_Volume(DF = annualDat, ProbOutbreak = ProbPest)
+                               simRes <- SimGrowth_Volume(DF = annualDat, ProbOutbreak = 0.02)
                                out <- data.table(Spp = currTrees[k],Vol = simRes[1], nTree = simRes[2])
                                output <- rbind(output,out)
                              } 
@@ -478,3 +482,26 @@ datLong <- melt(dat3, id.vars = c("Chunk","Year","ModRun","ID2"), value.name = "
 ggplot(datLong, aes(x = Chunk, y = Value, col = ModRun))+
   geom_boxplot()+
   facet_wrap(.~ClimVar, scales = "free_y")
+
+# ###Create current data
+# current <- temp %>% 
+#   merge(SuitTable, by.x = c("TreeSpp","SS.pred"), by.y = c("Spp","SS.pred"), all.x = TRUE) %>%
+#   unique()
+# 
+# ###check that there aren't errors in the table
+# temp <- aggregate(SS.pred ~ TreeSpp, current, FUN = length)
+# if(any(temp$SS.pred > 1)){
+#   stop("There are partial duplicates in the suitablity table. Please fix them. :)")
+# }
+# 
+# current <- data.frame(Spp = current$TreeSpp, FuturePeriod = 2000, 
+#                       MeanSI = current$MeanPlotSiteIndex, MeanSuit = current$Suitability)
+# 
+# missing <- Trees[!Trees %in% current$Spp]
+# if(length(missing) > 0){
+#   new <- current[rep(1,length(missing)),]
+#   new$Spp <- missing
+#   new$MeanSI <- 10
+#   new$MeanSuit <- 5
+#   current <- rbind(current, new)
+# }
