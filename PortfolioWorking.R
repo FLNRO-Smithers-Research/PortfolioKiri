@@ -2,7 +2,6 @@
 ###Kiri Daust, Nov 2020
 
 require(foreach)
-require(reticulate)
 require(Rcpp)
 library(gridExtra)
 library(data.table)
@@ -24,7 +23,7 @@ if(dir.exists("C:/users/whmacken/Sync")){
 
 ## source functions
 sourceCpp("./CppFunctions/SimGrowth.cpp")
-source_python("./PythonFns/PortfolioOptimisation.py")
+source("./PortfolioOpt_R.R")
 #source("CCISS_Fns.R")
 
 ###load data - in package data
@@ -311,7 +310,6 @@ allSitesSpp <- foreach(SNum = SL, .combine = rbind,
                                      "data.table","foreach","ggplot2","ggthemes","scales"), 
                        .noexport = c("gs2gw", "simGrowthCBST","simGrowthCpp"),
                        .export = c("cleanData","loopCombine")) %do% {
-                         reticulate::source_python("./PythonFns/PortfolioOptimisation.py") 
                          
                          cat("Optimising site",SNum,"...\n")
                          ##simulate climate
@@ -369,16 +367,14 @@ allSitesSpp <- foreach(SNum = SL, .combine = rbind,
                            ###only include species with mean return > 1 in portfolio
                            use <- colnames(returns)[colMeans(returns) > 1] ###should probably be higher
                            returns <- returns[,..use]
-                           sigma2 <- as.data.frame(cor(returns)) ###to create cov mat from returns
+                           sigma2 <- cor(returns) ###to create cov mat from returns
                            
-                           ef <- ef_weights_v2(returns, sigma2, boundDat,minAccept) 
-                           ef_w <- ef[[1]]
-                           ef_w$Sd <- ef[[2]]
-                           ef_w$Return <- 1:20
-                           ef_w$RealRet <- ef[[3]]
-                           ef_w$Sharpe <- ef[[4]]
+                           ef <- run_opt(returns, sigma2, boundDat,minAccept) 
+                           setnames(ef,old = c("frontier_sd","return","sharpe"),
+                                    new = c("Sd","RealRet","Sharpe"))
+                           ef[,Return := 1:20]
                            
-                           eff_front2 <- as.data.table(ef_w)
+                           eff_front2 <- ef
                            eff_front2[,RealRet := RealRet/max(RealRet)]
                            eff_front2[,SiteNo := SNum]
                            melt(eff_front2,id.vars = c("SiteNo", "Return"),variable.name = "Spp")
@@ -391,17 +387,17 @@ efAll <- na.omit(efAll)
 #efAll$RealRet <- efAll$RealRet/max(efAll$RealRet) ##standardise return
 RetCurve <- approx(efAll$RealRet,efAll$Sd,xout = returnValue)
 ret90 <- RetCurve$y
-maxSharpe <- efAll[Sharpe == max(Sharpe),-c("Return","Sharpe")]
+maxSharpe <- efAll[Sharpe == max(Sharpe),!c("Return","Sharpe")]
 maxSPos <- maxSharpe$Sd
 maxSharpe <- t(maxSharpe) %>% as.data.frame() %>% 
-  mutate(Spp = rownames(.)) %>% set_colnames(c("value","Spp"))
+  mutate(Spp = rownames(.)) %>% set_colnames(c("Sharpe_Opt","Spp"))
 ret90Props <- efAll[which.min(abs(RealRet - returnValue)),-c("Return","Sharpe")]
 ret90Props <- t(ret90Props) %>% as.data.frame() %>% 
-  mutate(Spp = rownames(.)) %>% set_colnames(c("value","Spp"))
+  mutate(Spp = rownames(.)) %>% set_colnames(c("Set_Return","Spp"))
 maxSharpe$SSCurrent <- selectBGC
 maxSharpe$Unit <- BGC
-maxSharpe$SetRet <- ret90Props$value
-maxSharpe$SetRet[maxSharpe$Spp == "Sd"] <- ret90
+maxSharpe$Set_Return <- ret90Props$Set_Return
+maxSharpe$Set_Return[maxSharpe$Spp == "Sd"] <- ret90
 efAll <- efAll[,-c("Return","Sharpe")]
 efAll <- melt(efAll, id.vars = "Sd")
 efAll$Unit <- BGC
@@ -413,9 +409,9 @@ ef_plot <- function(efAll,intDat){
   ggplot(efAll[efAll$variable != "RealRet",],aes(x = Sd, y = value,group = variable))+
     geom_area(aes(fill = variable), size = 0.00001, col = "grey50", stat = "identity")+
     colScale +
-    geom_vline(data = intDat[intDat$Spp == "Sd",], aes(xintercept = value,colour = "blue"), 
+    geom_vline(data = intDat[intDat$Spp == "Sd",], aes(xintercept = Sharpe_Opt,colour = "blue"), 
                linetype = "twodash", size = .75)+
-    geom_vline(data = intDat[intDat$Spp == "Sd",], aes(xintercept = SetRet,colour = "grey52"),
+    geom_vline(data = intDat[intDat$Spp == "Sd",], aes(xintercept = Set_Return,colour = "grey52"),
                linetype = "dashed", size = .75)+
     geom_line(data = efAll[efAll$variable == "RealRet",], 
               aes(x = Sd, y = value,colour = "black"),linetype = "F1",size = .75)+
@@ -429,7 +425,10 @@ ef_plot <- function(efAll,intDat){
 }
 ef_plot(efAll,maxSharpe)
 
-
+##table
+temp <- as.data.table(maxSharpe)
+temp <- temp[!Spp %chin% c("RealRet","Sd"),.(Spp,Sharpe_Opt,SetRet)]
+knitr::kable(temp, digits = 2)
 ###################################################################################################
 
 

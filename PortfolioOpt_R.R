@@ -1,17 +1,41 @@
+## Kiri Daust, July 2021
+## Implimentation of portfolio analysis using nloptr for optimisation
+
 library(nloptr)
 library(data.table)
 
 run_opt <- function(returns, cov_matrix, boundDat, minTot){
-  spp <- names(cov_matrix)
+  spp <- colnames(cov_matrix)
   sppUse <- spp
   mean_returns <- colMeans(returns)
-  bounds <- boundDat[Spp %chin% spp,] 
-  bndNew <- bounds
+  bndNew <- boundDat[Spp %chin% spp,] 
   
+  ##remove low weight species and re-optimise
   while(length(mean_returns) > 1){
     ##maybe temp
     target <- set_target(mean_returns,cov_matrix)
+    testRet <- target[1]+0.5 ## test both ends of the frontier
+    testPort <- efficient_return(mean_returns,cov_matrix,testRet,bndNew)$par
+    if(any(testPort < minTot)){
+      sppUse <- sppUse[testPort > minTot]
+      cov_matrix <- cov_matrix[sppUse,sppUse]
+      mean_returns <- mean_returns[sppUse]
+      bndNew <- bndNew[Spp %chin% sppUse,]
+    }else{
+      break
+    }
   }
+  frontier_weights <- setnames(data.table(matrix(nrow = 0, ncol = length(sppUse))),sppUse)
+  frontier_sd <- numeric(length = length(target))
+  for(i in 1:length(target)){
+    result <- efficient_return(mean_returns, cov_matrix, target[i], bndNew)
+    frontier_weights <- rbind(frontier_weights,t(as.matrix(result$par)),use.names = F)
+    frontier_sd[i] <- result$value
+  }
+  w_df <- cbind(frontier_weights,frontier_sd,return = target)
+  min_risk <- target[1]
+  w_df[,sharpe := (return - min_risk)/frontier_sd]
+  return(w_df)
 }
 
 
@@ -26,19 +50,23 @@ set_target <- function(mean_returns, cov_matrix){
   return(target)
 }
 
+efficient_return <- function(mean_returns, cov_matrix, target_ret, bounds){
+  num_ass <- length(mean_returns)
+  ##set constraints
+  eq_constr_ret <- function(x){
+    return(c(sum(mean_returns*x)-target_ret,sum(x)-1))
+  }
+  result <- slsqp(x0 = rep(1/num_ass,num_ass),fn = portfolio_volatility,
+                  lower = bounds$minWt, upper = bounds$maxWt,
+                  heq = eq_constr_ret, mean_returns = mean_returns, 
+                  cov_matrix = cov_matrix)
+  return(result)
+}
+
 portfolio_volatility <- function(weights, mean_returns, cov_matrix){
-  #weights <- as.matrix(weights)
   return(t(weights) %*% cov_matrix %*% weights)
 }
 
 portfolio_return <- function(weights, mean_returns){
   return(sum(weights*mean_returns))
-}
-
-efficient_return <- function(mean_returns, cov_matrix, target, bounds){
-  
-}
-
-portfolio_stdev <- function(weights){
-  
 }
