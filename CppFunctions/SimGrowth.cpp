@@ -31,7 +31,7 @@ NumericVector simGrowthCpp(DataFrame DF){
 
 // [[Rcpp::export]]
 NumericVector SimGrowth_v2(DataFrame DF, double ProbPest, double cmdMin, 
-                           double cmdMax, double tempMin, double tempMax){
+                           double cmdMax, double tempMin, double tempMax, double climLoss){
   NumericVector Growth = DF["Growth"]; //convert to vectors
   NumericVector NoMort  = DF["NoMort"];
   NumericVector MeanDead = DF["MeanDead"];
@@ -52,30 +52,30 @@ NumericVector SimGrowth_v2(DataFrame DF, double ProbPest, double cmdMin,
     if(climCMD[i] > cmdMax){ // CMD max 
       climDiff = climCMD[i] - cmdMax;
       diffProp = (climDiff*100)/(cmdMax - cmdMin);
-      climDiff = 1 - exp(-0.1*diffProp);//1 - exp function
+      climDiff = 1 - exp(-climLoss*diffProp);//1 - exp function
       climDead += climDiff*nTrees;
-      Rcout << "Too dry \n";
+      //Rcout << "Too dry \n";
     }
     if(climCMD[i] < cmdMin){
       climDiff = cmdMin - climCMD[i];
       diffProp = (climDiff*100)/(cmdMax - cmdMin);
-      climDiff = 1 - exp(-0.1*diffProp);//1 - exp function
+      climDiff = 1 - exp(-climLoss*diffProp);//1 - exp function
       climDead += climDiff*nTrees;
-      Rcout << "Too wet \n";
+      //Rcout << "Too wet \n";
     }
     if(climMax[i] > tempMax){
       climDiff = climMax[i] - tempMax;
       diffProp = (climDiff*100)/(tempMax - tempMin);
-      climDiff = 1 - exp(-0.1*diffProp);//1 - exp function
+      climDiff = 1 - exp(-climLoss*diffProp);//1 - exp function
       climDead += climDiff*nTrees;
-      Rcout << "Too hot \n";
+      //Rcout << "Too hot \n";
     }
     if(climMin[i] < tempMin){
       climDiff = tempMin - climMin[i];
       diffProp = (climDiff*100)/(cmdMax - cmdMin);
-      climDiff = 1 - exp(-0.1*diffProp);//1 - exp function
+      climDiff = 1 - exp(-climLoss*diffProp);//1 - exp function
       climDead += climDiff*nTrees;
-      Rcout << "Too cold \n";
+      //Rcout << "Too cold \n";
     }
     if(climDead > nTrees){
       climDead = nTrees;

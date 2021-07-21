@@ -25,9 +25,9 @@ if(dir.exists("C:/users/whmacken/Sync")){
 ## source functions
 sourceCpp("./CppFunctions/SimGrowth.cpp")
 source_python("./PythonFns/PortfolioOptimisation.py")
-source("CCISS_Fns.R")
+#source("CCISS_Fns.R")
 
-###load data
+###load data - in package data
 SuitTable <- fread("~/CommonTables/Feasibility_v12_7.csv") ##tree spp suitability
 SuitTable[,Confirmed := NULL]
 SuitTable[,SppVar := substr(SppVar,1,2)]
@@ -51,13 +51,14 @@ con <- dbConnect(drv, user = "postgres", password = "postgres", host = "138.197.
                  port = 5432, dbname = "cciss")
 library(ccissdev)
 bgcDat <- dbGetCCISS(con,siteids,avg = F, scn = "ssp370")
-sspreds <- edatopicOverlap(bgcDat,Edatope = E1)
+sspreds <- edatopicOverlap(bgcDat,Edatope = E1) ##reuse from uData$sspreds
 ###rename and cleanup
 SSPredOrig <- sspreds
 SSPredOrig[,allOverlap := NULL]
 setnames(SSPredOrig, old = c("BGC","SiteRef"), new = c("MergedBGC","SiteNo"))
 SSPredOrig <- SSPredOrig[,.(MergedBGC,SS_NoSpace,SSratio,SSprob,SS.pred,FuturePeriod,SiteNo)]
 
+##this can be package function
 cleanData <- function(SSPredAll,SIBEC,SuitTable,SNum,Trees,timePer,selectBGC){
   SSPred <- SSPredAll[SiteNo == SNum,] ###subset
   
@@ -114,6 +115,7 @@ cleanData <- function(SSPredAll,SIBEC,SuitTable,SNum,Trees,timePer,selectBGC){
   return(SS.sum)
 }
 
+##also package function
 edatopicSubset <- function(SSPredOrig, eda, pos = "Zonal"){
   if(pos == "Zonal"){
     SSPredFull <- SSPredOrig[grep("01",SSPredOrig$SS_NoSpace),]
@@ -137,9 +139,9 @@ edatopicSubset <- function(SSPredOrig, eda, pos = "Zonal"){
 ####ProbDead- out of 100 trees, how many will die each year at each suitability. NoMort- Percent of time no mortality
 #SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.35,1,1.8,4), "NoMort" = c(70,60,50,30), "RuinSeverity" = c(0.4,0.5,0.7,0.8)) 
 #SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.1,0.2,0.3, 1), "NoMort" = c(95,85,75,50), "RuinSeverity" = c(0.5,0.5,0.5,1))                        
-SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.1,0.2,0.3, 1), "NoMort" = c(95,85,75,50))#, "RuinSeverity" = c(1,2,3,4))
+#SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.1,0.2,0.3, 1), "NoMort" = c(95,85,75,50))#, "RuinSeverity" = c(1,2,3,4))
 #SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.35,1,1.8,4)), "NoMort" = c(95,85,75,50) 
-ProbPest <- 1/100 ## annual probability of an outbreak for a species
+#ProbPest <- 1/100 ## annual probability of an outbreak for a species
 
 #SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.1,0.2,0.3, 1), "NoMort" = c(95,85,75,50), "RuinSeverity" = c(0.3,0.35,0.4,.8))
 SuitProb <- data.frame("Suit" = c(1,2,3,4), "ProbDead" = c(0.1,0.5,1,4), "NoMort" = c(95,85,75,50))
@@ -147,7 +149,7 @@ ProbPest <- 1/1000 ## annual probability of an outbreak for a species
 
 minAccept <- 0.01 ##min acceptable weight in porfolio - if lower, will remove and re-optimize
 
-cols <- fread("./InputsGit/PortfolioSppColours.csv")
+cols <- fread("./InputsGit/PortfolioSppColours.csv") ##in package data
 cols <- cols[HexColour != "",]
 myPal <- cols$HexColour
 names(myPal) <- cols$TreeCode
@@ -207,11 +209,12 @@ SSPredAll <- SSPredAll[SiteNo %in% SiteList & !is.na(SSprob),]
 # f1 <- fitdist(ann2$CMD, "norm")
 # denscomp(f1)
 
-library(RPostgreSQL)
-drv <- dbDriver("PostgreSQL")
+# library(RPostgreSQL)
+# drv <- dbDriver("PostgreSQL")
+dbDisconnect(con)
 con <- dbConnect(drv, user = "postgres", password = "postgres", host = "138.197.168.220", 
                  port = 5432, dbname = "bgc_climate_data") ##connect to climate summaries
-dbDisconnect(con)
+#dbDisconnect(con)
 
 
 climVarFut <- dbGetQuery(con, paste0("select bgc,period,stat,climvar,value from szsum_fut where bgc in ('"
@@ -230,33 +233,34 @@ climVarCurr <- climVarCurr[stat != "stdev",]
 climVar <- rbind(climVarCurr,climVarFut)
 climVar[,period := as.numeric(substr(period,1,4))]
 
-##get variance estimate for each climate variable
-climParams <- list()
-simResults <- data.table()
-
-for(cvar in c("CMD","Tmin_sp","Tmax_sm")){
-  climSub <- climVar[climvar == cvar,.(value = mean(value)), by = .(period)]
-  climSD <- climVarSD[climvar == cvar,value]
-  ##table of means by period
-  dat <- data.table(Year = c(2000,2025,2055,2085),Mean = climSub$value)
-  s <- approx(dat$Year, dat$Mean, n = 101) ##smooth
+simulateClimate <- function(climVar){ ##package function
+  climParams <- list()
+  simResults <- data.table()
   
-  ##simulate using mean and variance
-  res <- numeric()
-  for(i in 1:101){
-    res[i] <- rnorm(1,mean = s$y[i],sd = climSD)
+  for(cvar in c("CMD","Tmin_sp","Tmax_sm")){
+    climSub <- climVar[climvar == cvar,.(value = mean(value)), by = .(period)]
+    climSD <- climVarSD[climvar == cvar,value]
+    ##table of means by period
+    dat <- data.table(Year = c(2000,2025,2055,2085),Mean = climSub$value)
+    s <- approx(dat$Year, dat$Mean, n = 101) ##smooth
+    
+    ##simulate using mean and variance
+    res <- numeric()
+    for(i in 1:101){
+      res[i] <- rnorm(1,mean = s$y[i],sd = climSD)
+    }
+    temp <- data.table(Year = 2000:2100, Value = res)
+    temp[,Var := cvar]
+    simResults <- rbind(simResults,temp,fill = T)
   }
-  temp <- data.table(Year = 2000:2100, Value = res)
-  temp[,Var := cvar]
-  simResults <- rbind(simResults,temp,fill = T)
+  simResults <- dcast(simResults,Year ~ Var, value.var = "Value")
+  return(simResults)
 }
-simResults <- dcast(simResults,Year ~ Var, value.var = "Value")
-
 ##tmin
 
 ##find limits for each species
 
-sppLimits <- foreach(spp = Trees, .combine = rbind) %do% {
+sppLimits <- foreach(spp = Trees, .combine = rbind) %do% {##package function
   temp <- SuitTable[Suitability == 1 & Spp == spp,] ##what units is Fd 1?
   sppUnits <- unique(temp$BGC)
   
@@ -299,16 +303,150 @@ sppLimits <- foreach(spp = Trees, .combine = rbind) %do% {
 # library(gridExtra)
 # grid.arrange(ggcmd,ggtmin,ggtmax, ncol = 3)
 
-
+##non-package function
 SL <- SiteList
+SL <- rep(SL, each = 5)
 allSitesSpp <- foreach(SNum = SL, .combine = rbind, 
-                       .packages = c("reshape2","Rcpp","magrittr","reticulate",
+                       .packages = c("Rcpp","magrittr","reticulate",
                                      "data.table","foreach","ggplot2","ggthemes","scales"), 
                        .noexport = c("gs2gw", "simGrowthCBST","simGrowthCpp"),
                        .export = c("cleanData","loopCombine")) %do% {
                          reticulate::source_python("./PythonFns/PortfolioOptimisation.py") 
                          
                          cat("Optimising site",SNum,"...\n")
+                         ##simulate climate
+                         simResults <- simulateClimate(climVar)
+                         SS.sum <- cleanData(SSPredAll,SIBEC,SuitTable,SNum, Trees, 
+                                             timePer = timePeriods,selectBGC = selectBGC)
+                         if(any(is.na(SS.sum$MeanSuit))){
+                           warning("Missing Suitability in unit ",
+                                   BGC,", sitenumber ",SNum," for ",
+                                   SS.sum$Spp[is.na(SS.sum$MeanSuit)], ": They will be filled with suit = 4")
+                           SS.sum$MeanSuit[is.na(SS.sum$MeanSuit)] <- 4
+                         }
+                         SS.sum[,FuturePeriod := as.numeric(FuturePeriod)]
+                         if(length(timePeriods) == 1){
+                           temp <- SS.sum
+                           temp$FuturePeriod <- SS.sum$FuturePeriod[1]+85
+                           SS.sum <- rbind(SS.sum, temp)
+                         }
+                         
+                         if(!is.null(SS.sum)){
+                           output <- data.table("year" = seq(2000,2100,1))
+                           
+                           for (k in 1:nSpp){ ##for each tree
+                             DatSpp <- SS.sum[Spp == treeList[k],]
+                             dat <- data.table("Period" = rescale(as.numeric(DatSpp$FuturePeriod), 
+                                                                  to = c(2000,2085)), 
+                                               "SIBEC" = DatSpp$MeanSI/50, "Suit" = DatSpp$MeanSuit)
+                             
+                             dat <- merge(dat, SuitProb, by = "Suit")
+                             s <- approx(dat$Period, dat$SIBEC, n = 101) ##Smooth SI
+                             p <- approx(dat$Period, dat$ProbDead, n = 101) ###Smooth Prob Dead
+                             m <- approx(dat$Period, dat$NoMort, n = 101) ##Smooth No Mort
+                             r <- approx(dat$Period, dat$Suit, n = 101)
+                             ##r <- approx(dat$Period, dat$RuinSeverity, n = 101)
+                             
+                             ###data frame of annual data
+                             annualDat <- data.table("Growth" = s[["y"]], "MeanDead" = p[["y"]], "NoMort" = m[["y"]], "Suit" = r[["y"]]) ##create working data
+                             annualDat <- cbind(simResults,annualDat)
+                             limits <- sppLimits[Spp == treeList[k],]
+                             Returns <- SimGrowth_v2(DF = annualDat,ProbPest = 0.005,
+                                                     cmdMin = limits[[1]],cmdMax = limits[[2]],
+                                                     tempMin = limits[[3]],tempMax = limits[[4]],climLoss = 0.08)
+                             tmpR <- c(0,Returns)
+                             assets <- Returns - tmpR[-length(tmpR)]
+                             temp <- data.frame(Spp = rep(treeList[k],101), 
+                                                Year = 1:101, Returns = Returns)
+                             output <- cbind(output, assets)
+                           } ## for each tree species
+                           
+                           colnames(output) <- c("Year", treeList)
+                           
+                           ####Portfolio#######################################
+                           returns <- output
+                           returns[,Year := NULL]
+                           ###only include species with mean return > 1 in portfolio
+                           use <- colnames(returns)[colMeans(returns) > 1] ###should probably be higher
+                           returns <- returns[,..use]
+                           sigma2 <- as.data.frame(cor(returns)) ###to create cov mat from returns
+                           
+                           ef <- ef_weights_v2(returns, sigma2, boundDat,minAccept) 
+                           ef_w <- ef[[1]]
+                           ef_w$Sd <- ef[[2]]
+                           ef_w$Return <- 1:20
+                           ef_w$RealRet <- ef[[3]]
+                           ef_w$Sharpe <- ef[[4]]
+                           
+                           eff_front2 <- as.data.table(ef_w)
+                           eff_front2[,RealRet := RealRet/max(RealRet)]
+                           eff_front2[,SiteNo := SNum]
+                           melt(eff_front2,id.vars = c("SiteNo", "Return"),variable.name = "Spp")
+                         }else{NULL}
+                       }
+##preprocess for plotting
+efAll <- allSitesSpp
+efAll <- dcast(efAll,Return ~ Spp, fun.aggregate = function(x){sum(x)/(length(SL))})
+efAll <- na.omit(efAll)
+#efAll$RealRet <- efAll$RealRet/max(efAll$RealRet) ##standardise return
+RetCurve <- approx(efAll$RealRet,efAll$Sd,xout = returnValue)
+ret90 <- RetCurve$y
+maxSharpe <- efAll[Sharpe == max(Sharpe),-c("Return","Sharpe")]
+maxSPos <- maxSharpe$Sd
+maxSharpe <- t(maxSharpe) %>% as.data.frame() %>% 
+  mutate(Spp = rownames(.)) %>% set_colnames(c("value","Spp"))
+ret90Props <- efAll[which.min(abs(RealRet - returnValue)),-c("Return","Sharpe")]
+ret90Props <- t(ret90Props) %>% as.data.frame() %>% 
+  mutate(Spp = rownames(.)) %>% set_colnames(c("value","Spp"))
+maxSharpe$SSCurrent <- selectBGC
+maxSharpe$Unit <- BGC
+maxSharpe$SetRet <- ret90Props$value
+maxSharpe$SetRet[maxSharpe$Spp == "Sd"] <- ret90
+efAll <- efAll[,-c("Return","Sharpe")]
+efAll <- melt(efAll, id.vars = "Sd")
+efAll$Unit <- BGC
+
+ef_plot <- function(efAll,intDat){
+  # efAll <- outAll$GraphDat
+  # intDat <- outAll$MaxS
+  efAll$variable <- factor(efAll$variable, levels = sort(unique(as.character(efAll$variable))))
+  ggplot(efAll[efAll$variable != "RealRet",],aes(x = Sd, y = value,group = variable))+
+    geom_area(aes(fill = variable), size = 0.00001, col = "grey50", stat = "identity")+
+    colScale +
+    geom_vline(data = intDat[intDat$Spp == "Sd",], aes(xintercept = value,colour = "blue"), 
+               linetype = "twodash", size = .75)+
+    geom_vline(data = intDat[intDat$Spp == "Sd",], aes(xintercept = SetRet,colour = "grey52"),
+               linetype = "dashed", size = .75)+
+    geom_line(data = efAll[efAll$variable == "RealRet",], 
+              aes(x = Sd, y = value,colour = "black"),linetype = "F1",size = .75)+
+    scale_colour_identity(name = "", guide = 'legend', labels = c("Return","MaxSharpe","90%"))+
+    scale_x_reverse() +
+    xlab("Max Return --> Minimized Risk")+
+    ylab("Portfolio Ratio")+
+    guides(fill=guide_legend("Species"))+
+    theme_few()+
+    facet_wrap(.~Unit, scales = "free_x")
+}
+ef_plot(efAll,maxSharpe)
+
+
+###################################################################################################
+
+
+
+
+##volume simulations
+SL <- SiteList
+allSitesSpp <- foreach(SNum = SL, .combine = rbind, 
+                       .packages = c("Rcpp","magrittr","reticulate",
+                                     "data.table","foreach","ggplot2","ggthemes","scales"), 
+                       .noexport = c("gs2gw", "simGrowthCBST","simGrowthCpp"),
+                       .export = c("cleanData","loopCombine")) %do% {
+                         reticulate::source_python("./PythonFns/PortfolioOptimisation.py") 
+                         
+                         cat("Optimising site",SNum,"...\n")
+                         ##simulate climate
+                         simResults <- simulateClimate(climVar)
                          SS.sum <- cleanData(SSPredAll,SIBEC,SuitTable,SNum, Trees, 
                                              timePer = timePeriods,selectBGC = selectBGC)
                          if(any(is.na(SS.sum$MeanSuit))){
@@ -381,7 +519,8 @@ allSitesSpp <- foreach(SNum = SL, .combine = rbind,
                            currTrees <- colnames(safe)
                            
                            simVolume <- foreach(i = 1:100, .combine = rbind) %do% {
-                             output <- data.table(Spp = character(),Vol = numeric(),nTree = numeric())
+                             climSim <- simulateClimate(climVar)
+                             output <- data.table(Spp = character(),Vol = numeric())
                              for(k in 1:length(currTrees)) { ##for each tree
                                DatSpp <- SS.sum[SS.sum$Spp == currTrees[k],]
                                dat <- data.frame("Period" = rescale(as.numeric(DatSpp$FuturePeriod), 
@@ -395,17 +534,20 @@ allSitesSpp <- foreach(SNum = SL, .combine = rbind,
                                r <- approx(dat$Period, dat$Suit, n = 101)
                                
                                ###data frame of annual data
-                               annualDat <- data.frame("Year" = seq(2000,2100,1), "Growth" = s[["y"]], 
-                                                       "MeanDead" = p[["y"]], "NoMort" = m[["y"]], "Suit" = r[["y"]]) ##create working data
-                               simRes <- SimGrowth_Volume(DF = annualDat, ProbOutbreak = 0.02)
-                               out <- data.table(Spp = currTrees[k],Vol = simRes[1], nTree = simRes[2])
+                               annualDat <- data.table("Growth" = s[["y"]], "MeanDead" = p[["y"]], "NoMort" = m[["y"]], "Suit" = r[["y"]]) ##create working data
+                               annualDat <- cbind(climSim,annualDat)
+                               limits <- sppLimits[Spp == treeList[k],]
+                               simRes <- SimGrowth_v2(DF = annualDat,ProbPest = 0.005,
+                                                       cmdMin = limits[[1]],cmdMax = limits[[2]],
+                                                       tempMin = limits[[3]],tempMax = limits[[4]])
+                               out <- data.table(Spp = currTrees[k],Vol = simRes[length(simRes)])
                                output <- rbind(output,out)
                              } 
-                             data.table(it = c(i,i),
-                                        Stat = c("Vol","nTree"),
-                                        MaxReturn = c(sum(output$Vol*t(risk)),sum(output$nTree*t(risk))), 
-                                        Return90 = c(sum(output$Vol*t(v90)),sum(output$nTree*t(v90))), 
-                                        Sharpe = c(sum(output$Vol*t(safe)),sum(output$nTree*t(safe))))
+                             data.table(it = i,
+                                        Stat = c("Vol"),
+                                        MaxReturn = c(sum(output$Vol*t(risk))), 
+                                        Return90 = c(sum(output$Vol*t(v90))), 
+                                        Sharpe = c(sum(output$Vol*t(safe))))
                             }
                            
                            #simVolume <- simVolume[Stat == "nTree",]
@@ -427,16 +569,14 @@ allSitesSpp <- as.data.table(allSitesSpp)
 allSitesSpp <- allSitesSpp[value < 5000,]
 allSitesSpp[value < 0, value := 0]
 simVol <- allSitesSpp[Stat == "Vol",]
-simNumTree <- allSitesSpp[Stat == "nTree",]
-simNumTree <- simNumTree[value < 100,]
 
 ggplot(simVol, aes(x = variable, y = value))+
-  geom_violin(draw_quantiles = 0.5)+
+  geom_violin(draw_quantiles = 0.5,scale = "width")+
   labs(x = "Portfolio Choice", y = "Volume of Stand")+
   ggtitle(BGC)
 
 ggplot(simNumTree, aes(x = variable, y = value))+
-  geom_violin(draw_quantiles = 0.5)+
+  geom_violin(draw_quantiles = 0.5, scale = "width")+
   labs(x = "Portfolio Choice", y = "# of Trees")+
   ggtitle(BGC)
 
